@@ -23,6 +23,37 @@ Team number: _TBD_
 - Deployed app (HF Space): _TBD_
 - Final model (ClearML task ID): `1bee769f0c32413e8b0ad57fdcc7d626` (output model `best_model.pt`, 99.0% test accuracy). Results log: [docs/results.md](docs/results.md)
 
+## Status and results
+
+| Stage | Status |
+| --- | --- |
+| Data split and EDA | Done: 38,812 train / 8,317 val / 8,318 test, stratified, seed 42 |
+| CNN from scratch, full data | Done: **99.0% test accuracy**, 99.99% top-5, macro F1 0.986 (20 epochs, 64 min on a MacBook GPU) |
+| Gradio app (local) | Done |
+| Hyperparameter sweep | To do (waiting for the KCL ClearML GPU queue) |
+| ResNet18 baseline | To do |
+| Hugging Face Space | To do |
+| Report, demo video, AI use statement | To do (deadline 3 Dec 2026, 4pm) |
+
+Weakest classes: Corn Cercospora leaf spot (F1 0.89) and Tomato Early blight (F1 0.93).
+Known limitation: photos of plants outside the 39 classes still get a confident answer
+(a maple leaf came out as "Background without leaves" at 97%). Full details, run IDs and
+per-epoch numbers are in [docs/results.md](docs/results.md).
+
+## Project layout
+
+| Path | Contents |
+| --- | --- |
+| `src/data.py`, `src/transforms.py` | Loading PlantVillage, the 70/15/15 split, data loaders, resizing and augmentation |
+| `src/models.py` | `PlantCNN` (from scratch) and the ResNet18 baseline |
+| `src/train.py`, `src/evaluate.py` | Training with early stopping, test-set evaluation |
+| `src/split_data.py`, `src/eda.py`, `src/register_dataset.py` | Data checks, plots and ClearML dataset versioning |
+| `src/sweep.py`, `src/compare_runs.py` | Hyperparameter experiments and the results table |
+| `src/inference.py`, `app/app.py` | Prediction helper and the Gradio app |
+| `src/make_app_assets.py`, `src/publish_model.py`, `src/deploy_space.py` | App images, Hugging Face model upload and Space deployment |
+| `tests/` | Unit tests, run by GitHub Actions on every push and pull request |
+| `docs/results.md` | Results log for the report |
+
 ## Setup
 
 Python 3.10 or 3.11.
@@ -33,6 +64,12 @@ source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 clearml-init                       # paste credentials from the KCL ClearML server (Settings > Workspace)
 ```
+
+Activate the environment again in every new terminal (`source .venv/bin/activate`); a
+"No module named torch" error usually means it is not active. While the KCL ClearML server
+is down, credentials from a free [app.clear.ml](https://app.clear.ml) account work the same way.
+Training picks the best device automatically: an NVIDIA GPU on the ClearML worker, the Apple
+GPU (MPS) on a Mac, otherwise the CPU.
 
 Never commit `clearml.conf`, the dataset or model files (they are in `.gitignore`).
 
@@ -53,6 +90,7 @@ python -m src.register_dataset             # version the split (row indices) as 
 
 ```bash
 python -m src.train --subset 0.25 --epochs 10 --tags cnn subset            # local
+python -m src.train --scheduler cosine --patience 4 --tags cnn full        # full data (the 99% model)
 python -m src.train --subset 0.25 --queue <gpu-queue-name> --tags cnn      # KCL GPU worker
 python -m src.train --arch resnet18 --lr 3e-4 --queue <gpu-queue-name>     # transfer-learning baseline
 ```
@@ -92,15 +130,18 @@ python -m src.publish_model --repo-id <hf-user>/plant-disease-cnn --checkpoint o
 python -m src.deploy_space --space-id <hf-user>/plant-disease-classifier --hf-model-repo <hf-user>/plant-disease-cnn
 ```
 
-App features: top-5 predictions as bars and a table, example gallery, model selector (when
-several checkpoints are given), low-confidence warning, training images of the predicted class,
-flagging wrong predictions (saved to `flagged/`), batch upload, and an About tab on limitations.
+App features: top-5 predictions as bars and a table, an example gallery captioned with each
+image's true class, a model selector (when several checkpoints are given), a low-confidence
+warning, training images of the predicted class, flagging wrong predictions (saved to
+`app/flagged/`), batch upload, and an About tab on limitations.
 
 ### Tests
 
 ```bash
 pytest --cov=src
 ```
+
+GitHub Actions runs the same tests on every push and pull request; keep them green before merging.
 
 ## Contributing
 
