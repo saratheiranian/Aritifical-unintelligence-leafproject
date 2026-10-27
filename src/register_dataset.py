@@ -21,7 +21,7 @@ from src.train import CLEARML_PROJECT
 def split_indices(ds, label_col, seed=SEED):
     """Row indices (into the original dataset) of each split."""
     indexed = ds.select_columns([label_col]).add_column("row_idx", list(range(len(ds))))
-    return {name: split["row_idx"] for name, split in split_dataset(indexed, label_col, seed=seed).items()}
+    return {name: list(split["row_idx"]) for name, split in split_dataset(indexed, label_col, seed=seed).items()}
 
 
 def main(argv=None):
@@ -37,7 +37,7 @@ def main(argv=None):
     names = ds.features[label_col].names
     indices = split_indices(ds, label_col, seed=args.seed)
 
-    labels = ds[label_col]
+    labels = list(ds[label_col])
     counts = pd.DataFrame(
         {split: pd.Series([labels[i] for i in idx]).value_counts() for split, idx in indices.items()}
     ).fillna(0).astype(int)
