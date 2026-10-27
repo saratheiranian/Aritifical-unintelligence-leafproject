@@ -3,3 +3,4 @@ torch
 torchvision
 gradio>=4.40
 pandas
+huggingface_hub

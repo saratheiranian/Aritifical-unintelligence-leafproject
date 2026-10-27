@@ -27,3 +27,9 @@ clearml.conf
 # Gradio
 flagged/
 .gradio/
+
+# App assets made by src/make_app_assets.py (dataset images) and app checkpoints
+app/examples/
+app/class_examples/
+app/models/
+app/flagged/
