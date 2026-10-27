@@ -12,7 +12,7 @@ def test_top_k_accuracy():
     probs = np.array([[0.1, 0.7, 0.2], [0.5, 0.3, 0.2], [0.2, 0.3, 0.5]])
     labels = np.array([1, 2, 0])
     assert top_k_accuracy(probs, labels, k=1) == pytest.approx(1 / 3)
-    assert top_k_accuracy(probs, labels, k=2) == pytest.approx(2 / 3)
+    assert top_k_accuracy(probs, labels, k=2) == pytest.approx(1 / 3)  # rows 2 and 3 rank their label last
     assert top_k_accuracy(probs, labels, k=3) == 1.0
 
 
