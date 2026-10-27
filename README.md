@@ -38,47 +38,75 @@ Never commit `clearml.conf`, the dataset or model files (they are in `.gitignore
 
 ## Usage
 
-All commands run from the repo root.
+All commands run from the repo root. Each script is its own ClearML task (data, train, eval),
+as the brief recommends. Add `--no-clearml` to the train, evaluate and EDA scripts to run without tracking.
+
+### 1. Data
 
 ```bash
-# data: class counts and the stratified 70/15/15 split (seed 42)
-python -m src.split_data
+python -m src.split_data                   # class counts per split, stratification check
 python -m src.eda                          # plots to outputs/eda/ and ClearML
-
-# train: quick prototype on 25% of the training split
-python -m src.train --subset 0.25 --epochs 10 --tags cnn subset
-python -m src.train --subset 0.25 --queue <gpu-queue-name>    # on the KCL GPU worker
-python -m src.train --subset 0.05 --epochs 1 --no-clearml     # local smoke test
-
-# evaluate the best checkpoint on the test split
-python -m src.evaluate --checkpoint outputs/best_model.pt
-
-# app
-python app/app.py --checkpoint outputs/best_model.pt
-
-# tests
-pytest --cov=src
+python -m src.register_dataset             # version the split (row indices) as a ClearML Dataset
 ```
 
-## Layout
+### 2. Train
 
-| Path | Purpose |
-| --- | --- |
-| `src/data.py` | Load the HF dataset, stratified split, subset, PyTorch `Dataset` and loaders |
-| `src/transforms.py` | Resize, normalisation and train-only augmentation |
-| `src/split_data.py` | Prints class counts for full/train/val/test and checks stratification |
-| `src/eda.py` | Class distribution, sample grid and split-check plots |
-| `src/models.py` | `PlantCNN` (from scratch) and ResNet18 transfer-learning baseline |
-| `src/train.py` | Training loop with early stopping and ClearML logging |
-| `src/evaluate.py` | Test accuracy, top-5 accuracy, per-class metrics, confusion matrix |
-| `app/app.py` | Gradio UI (upload a leaf, see top-5 predictions) |
-| `tests/` | Pytest unit tests, run by GitHub Actions on every pull request |
+```bash
+python -m src.train --subset 0.25 --epochs 10 --tags cnn subset            # local
+python -m src.train --subset 0.25 --queue <gpu-queue-name> --tags cnn      # KCL GPU worker
+python -m src.train --arch resnet18 --lr 3e-4 --queue <gpu-queue-name>     # transfer-learning baseline
+```
 
-## Deploying to Hugging Face Spaces
+Remote runs: the ClearML agent clones the repository at your last pushed commit, so commit and
+push first. The queue name is on the Workers & Queues page of the KCL ClearML server. The GPU
+slice has 8 GB, which is plenty for batch size 64 at 128x128 or 32 at 256x256.
 
-Create a public Gradio Space, then copy into it: `app/app.py` as `app.py`, the `src/` folder,
-`app/requirements.txt` as `requirements.txt`, and the trained checkpoint as `model.pt`.
+### 3. Experiments
+
+```bash
+python -m src.sweep --base-task-id <id of a finished train task> --queue <gpu-queue-name> --subset 0.25
+python -m src.compare_runs --tag sweep     # outputs/results.md: table for the report
+```
+
+`src/sweep.py` lists the one-change-at-a-time variants (learning rate, optimiser, batch size,
+dropout, batchnorm, augmentation, depth, channels, scheduler, image size, ResNet18).
+Compare them in the ClearML web app too: select the tasks, then Compare.
+
+### 4. Evaluate
+
+```bash
+python -m src.evaluate --checkpoint outputs/best_model.pt
+python -m src.evaluate --clearml-model-id <model id> --queue <gpu-queue-name>
+```
+
+Logs test accuracy, top-5 accuracy, per-class precision/recall/F1, the weakest classes and a
+confusion matrix.
+
+### 5. App and deployment
+
+```bash
+python -m src.make_app_assets                                    # example gallery + class examples
+python app/app.py --checkpoint outputs/best_model.pt             # local app at http://127.0.0.1:7860
+huggingface-cli login                                            # token with write access
+python -m src.publish_model --repo-id <hf-user>/plant-disease-cnn --checkpoint outputs/best_model.pt
+python -m src.deploy_space --space-id <hf-user>/plant-disease-classifier --hf-model-repo <hf-user>/plant-disease-cnn
+```
+
+App features: top-5 predictions as bars and a table, example gallery, model selector (when
+several checkpoints are given), low-confidence warning, training images of the predicted class,
+flagging wrong predictions (saved to `flagged/`), batch upload, and an About tab on limitations.
+
+### Tests
+
+```bash
+pytest --cov=src
+```
 
 ## Contributing
 
 Work on a branch (`role/task`, e.g. `data/eda`), open a pull request, and get one review before merging into `main`.
+
+## AI use statement
+
+Parts of this codebase were written with the help of an AI assistant (Claude) and then reviewed,
+tested and adapted by the team. See the AI use statement submitted with the project for details.

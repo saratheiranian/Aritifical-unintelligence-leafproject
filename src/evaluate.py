@@ -4,6 +4,7 @@ Reports accuracy, top-5 accuracy, per-class precision/recall/F1 and a confusion 
 and logs them to ClearML.
 
     python -m src.evaluate --checkpoint outputs/best_model.pt
+    python -m src.evaluate --clearml-model-id <model id> --queue <gpu-queue-name>
 """
 
 import argparse
@@ -62,6 +63,9 @@ def plot_confusion_matrix(cm, class_names, path):
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--checkpoint", default="outputs/best_model.pt")
+    p.add_argument("--clearml-model-id", default=None, help="evaluate a model stored in ClearML")
+    p.add_argument("--task-name", default="evaluate")
+    p.add_argument("--queue", default=None, help="ClearML queue for remote execution")
     p.add_argument("--batch-size", type=int, default=128)
     p.add_argument("--num-workers", type=int, default=2)
     p.add_argument("--output-dir", default="outputs")
@@ -72,10 +76,18 @@ def main(argv=None):
     if not args.no_clearml:
         from clearml import Task
 
-        task = Task.init(project_name=CLEARML_PROJECT, task_name="evaluate", tags=["eval"])
+        task = Task.init(project_name=CLEARML_PROJECT, task_name=args.task_name, tags=["eval"])
+        if args.queue:
+            task.execute_remotely(queue_name=args.queue)
+
+    checkpoint = args.checkpoint
+    if args.clearml_model_id:
+        from clearml import InputModel
+
+        checkpoint = InputModel(model_id=args.clearml_model_id).get_local_copy()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model, ckpt = load_checkpoint(args.checkpoint, device)
+    model, ckpt = load_checkpoint(checkpoint, device)
     loaders, class_names = make_loaders(
         img_size=ckpt["img_size"],
         augment=False,
@@ -107,6 +119,9 @@ def main(argv=None):
         logger.report_single_value("test_top5_accuracy", top5)
         logger.report_table("Per-class metrics", "test", iteration=0, table_plot=report_df)
         logger.report_matplotlib_figure("Confusion matrix", "test", figure=fig, iteration=0)
+        worst = report_df.iloc[: len(class_names)].sort_values("f1-score").head(5)
+        logger.report_table("Weakest classes", "test", iteration=0, table_plot=worst)
+    return {"accuracy": acc, "top5_accuracy": top5}
 
 
 if __name__ == "__main__":

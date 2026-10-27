@@ -4,16 +4,21 @@ Examples:
     # quick prototype on 25% of the training split, logged to ClearML
     python -m src.train --subset 0.25 --epochs 10 --tags cnn subset
 
-    # same run, but executed on the KCL GPU worker (use your team's queue name)
+    # same run, but executed on the KCL GPU worker (queue name from Workers & Queues)
     python -m src.train --subset 0.25 --queue <gpu-queue-name>
 
     # run locally without ClearML
     python -m src.train --subset 0.05 --epochs 1 --no-clearml
+
+Remote runs: the ClearML agent clones the repository at your last pushed commit, so commit
+and push before using --queue. Batch size 64 at 128x128 (or 32 at 256x256) fits easily in the
+8 GB GPU slice.
 """
 
 import argparse
 import os
 import random
+import time
 
 import numpy as np
 import torch
@@ -39,10 +44,12 @@ def parse_args(argv=None):
     p.add_argument("--depth", type=int, default=4)
     p.add_argument("--dropout", type=float, default=0.3)
     p.add_argument("--no-batchnorm", action="store_true")
+    p.add_argument("--freeze-backbone", action="store_true", help="resnet18 only: train the head only")
     # optimisation
     p.add_argument("--optimizer", choices=["adam", "adamw"], default="adamw")
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--weight-decay", type=float, default=1e-4)
+    p.add_argument("--scheduler", choices=["none", "cosine", "plateau"], default="none")
     p.add_argument("--epochs", type=int, default=20)
     p.add_argument("--patience", type=int, default=3, help="early stopping patience (epochs)")
     p.add_argument("--min-delta", type=float, default=0.002, help="min val accuracy gain to count")
@@ -63,6 +70,37 @@ def set_seed(seed):
     torch.cuda.manual_seed_all(seed)
 
 
+class EarlyStopping:
+    """Stop when validation accuracy has not improved by min_delta for `patience` epochs."""
+
+    def __init__(self, patience=3, min_delta=0.0):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.best = float("-inf")
+        self.epochs_without_gain = 0
+
+    def step(self, value):
+        """Record a new value. Returns True if it is the best so far."""
+        if value > self.best + self.min_delta:
+            self.best = value
+            self.epochs_without_gain = 0
+            return True
+        self.epochs_without_gain += 1
+        return False
+
+    @property
+    def should_stop(self):
+        return self.epochs_without_gain >= self.patience
+
+
+def make_scheduler(name, optimizer, epochs):
+    if name == "cosine":
+        return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+    if name == "plateau":
+        return torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="max", factor=0.5, patience=1)
+    return None
+
+
 def run_epoch(model, loader, criterion, device, optimizer=None):
     """One pass over a loader. Trains if an optimizer is given, otherwise evaluates."""
     training = optimizer is not None
@@ -81,6 +119,21 @@ def run_epoch(model, loader, criterion, device, optimizer=None):
             correct += (logits.argmax(dim=1) == labels).sum().item()
             seen += labels.size(0)
     return total_loss / seen, correct / seen
+
+
+def save_checkpoint(path, model, args, model_kwargs, class_names, val_acc, epoch):
+    torch.save(
+        {
+            "state_dict": model.state_dict(),
+            "arch": args.arch,
+            "model_kwargs": model_kwargs,
+            "class_names": class_names,
+            "img_size": args.img_size,
+            "val_acc": val_acc,
+            "epoch": epoch,
+        },
+        path,
+    )
 
 
 def main(argv=None):
@@ -110,61 +163,70 @@ def main(argv=None):
         seed=args.seed,
     )
 
-    model_kwargs = {
-        "num_classes": len(class_names),
-        "base_channels": args.base_channels,
-        "depth": args.depth,
-        "dropout": args.dropout,
-        "use_batchnorm": not args.no_batchnorm,
-    }
+    model_kwargs = {"num_classes": len(class_names)}
+    if args.arch == "cnn":
+        model_kwargs |= {
+            "base_channels": args.base_channels,
+            "depth": args.depth,
+            "dropout": args.dropout,
+            "use_batchnorm": not args.no_batchnorm,
+        }
+    else:
+        model_kwargs |= {"pretrained": True, "freeze_backbone": args.freeze_backbone}
     model = build_model(args.arch, **model_kwargs).to(device)
-    print(f"{args.arch}: {count_parameters(model):,} trainable parameters on {device}")
+    n_params = count_parameters(model)
+    print(f"{args.arch}: {n_params:,} trainable parameters on {device}")
+    # Saved copies are rebuilt from model_kwargs, so a fine-tuned ResNet must not re-download weights.
+    saved_kwargs = {**model_kwargs, "pretrained": False} if args.arch == "resnet18" else model_kwargs
 
     criterion = nn.CrossEntropyLoss()
     opt_cls = torch.optim.AdamW if args.optimizer == "adamw" else torch.optim.Adam
-    optimizer = opt_cls(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    params = [p for p in model.parameters() if p.requires_grad]
+    optimizer = opt_cls(params, lr=args.lr, weight_decay=args.weight_decay)
+    scheduler = make_scheduler(args.scheduler, optimizer, args.epochs)
 
     os.makedirs(args.output_dir, exist_ok=True)
     best_path = os.path.join(args.output_dir, "best_model.pt")
-    best_val_acc, epochs_without_gain = 0.0, 0
+    stopper = EarlyStopping(args.patience, args.min_delta)
     logger = task.get_logger() if task else None
+    start = time.time()
 
     for epoch in range(1, args.epochs + 1):
+        epoch_start = time.time()
         train_loss, train_acc = run_epoch(model, loaders["train"], criterion, device, optimizer)
         val_loss, val_acc = run_epoch(model, loaders["val"], criterion, device)
+        epoch_time = time.time() - epoch_start
+        lr = optimizer.param_groups[0]["lr"]
         print(
             f"epoch {epoch:02d} | train loss {train_loss:.4f} acc {train_acc:.4f} "
-            f"| val loss {val_loss:.4f} acc {val_acc:.4f}"
+            f"| val loss {val_loss:.4f} acc {val_acc:.4f} | lr {lr:.2e} | {epoch_time:.0f}s"
         )
         if logger:
             logger.report_scalar("loss", "train", value=train_loss, iteration=epoch)
             logger.report_scalar("loss", "val", value=val_loss, iteration=epoch)
             logger.report_scalar("accuracy", "train", value=train_acc, iteration=epoch)
             logger.report_scalar("accuracy", "val", value=val_acc, iteration=epoch)
+            logger.report_scalar("learning rate", "lr", value=lr, iteration=epoch)
+            logger.report_scalar("epoch time (s)", "time", value=epoch_time, iteration=epoch)
 
-        if val_acc > best_val_acc + args.min_delta:
-            best_val_acc, epochs_without_gain = val_acc, 0
-            torch.save(
-                {
-                    "state_dict": model.state_dict(),
-                    "arch": args.arch,
-                    "model_kwargs": model_kwargs,
-                    "class_names": class_names,
-                    "img_size": args.img_size,
-                    "val_acc": val_acc,
-                    "epoch": epoch,
-                },
-                best_path,
-            )
-        else:
-            epochs_without_gain += 1
-            if epochs_without_gain >= args.patience:
-                print(f"Early stopping: no val accuracy gain for {args.patience} epochs")
-                break
+        if stopper.step(val_acc):
+            save_checkpoint(best_path, model, args, saved_kwargs, class_names, val_acc, epoch)
+        if scheduler is not None:
+            scheduler.step(val_acc) if args.scheduler == "plateau" else scheduler.step()
+        if stopper.should_stop:
+            print(f"Early stopping: no val accuracy gain for {args.patience} epochs")
+            break
 
-    print(f"Best val accuracy {best_val_acc:.4f}, checkpoint saved to {best_path}")
+    total_minutes = (time.time() - start) / 60
+    print(f"Best val accuracy {stopper.best:.4f} in {total_minutes:.1f} min; saved {best_path}")
     if logger:
-        logger.report_single_value("best_val_accuracy", best_val_acc)
+        logger.report_single_value("best_val_accuracy", stopper.best)
+        logger.report_single_value("epochs_run", epoch)
+        logger.report_single_value("train_minutes", total_minutes)  # for the sustainability section
+        logger.report_single_value("parameters", n_params)
+    if task:
+        task.close()  # lets sweep.py start the next run in the same process
+    return stopper.best
 
 
 if __name__ == "__main__":
