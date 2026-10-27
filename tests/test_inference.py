@@ -36,3 +36,18 @@ def test_app_builds(checkpoint):
     app = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(app)
     assert app.build_app({"cnn": str(checkpoint)}) is not None
+
+
+def test_app_builds_with_captioned_examples(checkpoint, tmp_path):
+    pytest.importorskip("gradio")
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location("app", Path(__file__).parent.parent / "app" / "app.py")
+    app = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(app)
+    examples = tmp_path / "examples"
+    examples.mkdir()
+    Image.new("RGB", (64, 64), (40, 120, 40)).save(examples / "Cherry_(including_sour)___healthy.jpg")
+    app.EXAMPLES_DIR = examples
+    assert app.build_app({"cnn": str(checkpoint)}) is not None
