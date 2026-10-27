@@ -21,7 +21,7 @@ Team number: _TBD_
 
 - Repository: https://github.com/saratheiranian/Aritifical-unintelligence-leafproject
 - Deployed app (HF Space): _TBD_
-- Final model (ClearML model ID / task ID): _TBD_
+- Final model (ClearML task ID): `1bee769f0c32413e8b0ad57fdcc7d626` (output model `best_model.pt`, 99.0% test accuracy). Results log: [docs/results.md](docs/results.md)
 
 ## Setup
 
