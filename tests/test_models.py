@@ -24,3 +24,11 @@ def test_build_model_rejects_unknown_arch():
 def test_resnet18_head_has_39_outputs():
     model = build_model("resnet18", pretrained=False)
     assert model(torch.randn(1, 3, 128, 128)).shape == (1, 39)
+
+
+def test_get_device_returns_a_usable_device():
+    from src.models import get_device
+
+    device = get_device()
+    assert device.type in {"cuda", "mps", "cpu"}
+    assert torch.zeros(1, device=device).device.type == device.type

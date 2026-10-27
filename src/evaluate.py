@@ -20,7 +20,7 @@ import torch
 from sklearn.metrics import classification_report, confusion_matrix
 
 from src.data import make_loaders
-from src.models import build_model
+from src.models import build_model, get_device
 from src.train import CLEARML_PROJECT
 
 
@@ -86,7 +86,7 @@ def main(argv=None):
 
         checkpoint = InputModel(model_id=args.clearml_model_id).get_local_copy()
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = get_device()
     model, ckpt = load_checkpoint(checkpoint, device)
     loaders, class_names = make_loaders(
         img_size=ckpt["img_size"],

@@ -25,7 +25,7 @@ import torch
 import torch.nn as nn
 
 from src.data import make_loaders
-from src.models import build_model, count_parameters
+from src.models import build_model, count_parameters, get_device
 
 CLEARML_PROJECT = "PlantDisease"  # change to the project name your ClearML guide asks for
 
@@ -153,7 +153,7 @@ def main(argv=None):
         if args.queue:
             task.execute_remotely(queue_name=args.queue)  # stops here locally, reruns on the worker
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = get_device()
     loaders, class_names = make_loaders(
         img_size=args.img_size,
         augment=not args.no_augment,
