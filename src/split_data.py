@@ -17,7 +17,7 @@ def main():
     splits = split_dataset(ds, label_col, seed=SEED)
 
     counts = pd.DataFrame(
-        {name: pd.Series(split[label_col]).value_counts() for name, split in {"full": ds, **splits}.items()}
+        {name: pd.Series(list(split[label_col])).value_counts() for name, split in {"full": ds, **splits}.items()}
     ).fillna(0).astype(int)
     counts.index = [names[i] for i in counts.index]
     print(counts.sort_values("full").to_string())
