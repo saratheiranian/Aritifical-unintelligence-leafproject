@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Data, models and outputs (never commit these; the brief says not to submit them)
+data/
+outputs/
+*.pt
+*.pth
+*.ckpt
+
+# Secrets
+clearml.conf
+.env
+
+# Notebooks / editors
+.ipynb_checkpoints/
+.vscode/
+.idea/
+.DS_Store
+
+# Gradio
+flagged/
+.gradio/
