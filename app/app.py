@@ -14,6 +14,7 @@ Where models come from (first match wins):
 
 import argparse
 import csv
+import inspect
 import os
 import sys
 import uuid
@@ -36,6 +37,11 @@ LOW_CONFIDENCE = 0.5
 EXAMPLES_DIR = HERE / "examples"
 CLASS_EXAMPLES_DIR = HERE / "class_examples"
 FLAG_DIR = HERE / "flagged"
+
+
+def supports_example_labels():
+    """gr.Examples gained `example_labels` in Gradio 4.x; older versions just skip the captions."""
+    return "example_labels" in inspect.signature(gr.Examples.__init__).parameters
 
 
 def find_checkpoints(cli_paths):
@@ -143,7 +149,11 @@ def build_app(checkpoints):
                     button = gr.Button("Classify", variant="primary")
                     examples = sorted(str(p) for p in EXAMPLES_DIR.glob("*.jpg"))
                     if examples:
-                        gr.Examples(examples=examples, inputs=image, label="Or pick an example")
+                        # Example files are named after their true class; show it as the caption.
+                        captions = [pretty_name(Path(p).stem) for p in examples]
+                        extra = {"example_labels": captions} if supports_example_labels() else {}
+                        gr.Examples(examples=examples, inputs=image,
+                                    label="Or pick an example (caption = true class)", **extra)
                 with gr.Column():
                     note = gr.Markdown()
                     label = gr.Label(num_top_classes=TOP_K, label=f"Top {TOP_K} predictions")
