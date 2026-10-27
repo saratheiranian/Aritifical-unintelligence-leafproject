@@ -1,5 +1,6 @@
 """Model architectures: a CNN written from scratch, plus an optional ResNet18 baseline."""
 
+import torch
 import torch.nn as nn
 from torchvision import models
 
@@ -65,6 +66,15 @@ def build_model(arch, **kwargs):
             freeze_backbone=kwargs.get("freeze_backbone", False),
         )
     raise ValueError(f"Unknown architecture: {arch}")
+
+
+def get_device():
+    """Best available device: NVIDIA GPU (ClearML worker), Apple GPU (Mac), else CPU."""
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
 
 
 def count_parameters(model):
