@@ -27,6 +27,7 @@ EXPERIMENTS = {
     "dropout-0.5": {"dropout": 0.5},
     "no-batchnorm": {"no_batchnorm": True},
     "no-augment": {"no_augment": True},
+    "balanced-sampler": {"balanced_sampler": True},
     "depth-3": {"depth": 3},
     "depth-5": {"depth": 5},
     "channels-16": {"base_channels": 16},
