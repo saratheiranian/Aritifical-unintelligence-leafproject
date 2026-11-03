@@ -6,16 +6,18 @@ scratch in PyTorch, tracked in ClearML, served with Gradio on Hugging Face Space
 
 ## Team
 
-Team number: _TBD_
+Team number: 7
 
-| Name | Role |
-| --- | --- |
-| _TBD_ | Project manager and report editor |
-| _TBD_ | Data lead |
-| _TBD_ | Model lead |
-| _TBD_ | Experiments lead |
-| _TBD_ | Evaluation and quality lead |
-| _TBD_ | App and deployment lead |
+| Role | Name | Owns |
+| --- | --- | --- |
+| 1. Data lead | Sara | Data loading, split, EDA, data quality checks, balanced sampler, data card |
+| 2. Model lead | Precious | CNN architectures, training loop, ResNet18 baseline |
+| 3. Experiments lead | Amrit | ClearML tracking, hyperparameter sweep and search, results table |
+| 4. Evaluation lead | Maryam and Media | Test metrics, robustness tests, Grad-CAM, Responsible AI |
+| 5. App and deployment lead | Maryam and Media | Gradio app, Hugging Face Space, demo video |
+| 6. Project manager and quality lead | Nischal | Planning, Issues, minutes, CI and tests, report assembly, submission |
+
+Partners review each other's pull requests: 1 and 2, 3 and 4, 5 and 6.
 
 ## Links
 
@@ -84,7 +86,11 @@ as the brief recommends. Add `--no-clearml` to the train, evaluate and EDA scrip
 python -m src.split_data                   # class counts per split, stratification check
 python -m src.eda                          # plots to outputs/eda/ and ClearML
 python -m src.register_dataset             # version the split (row indices) as a ClearML Dataset
+python -m src.data_quality                 # image sizes, brightness, duplicates and split leakage
 ```
+
+Dataset details, class balance and known limitations are in [docs/data_card.md](docs/data_card.md).
+Train with `--balanced-sampler` to draw every class equally often (the classes are 36x imbalanced).
 
 ### 2. Train
 

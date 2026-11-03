@@ -36,6 +36,7 @@ def parse_args(argv=None):
     p.add_argument("--img-size", type=int, default=128)
     p.add_argument("--subset", type=float, default=1.0, help="fraction of the training split")
     p.add_argument("--no-augment", action="store_true")
+    p.add_argument("--balanced-sampler", action="store_true", help="draw every class equally often in training")
     p.add_argument("--batch-size", type=int, default=64)
     p.add_argument("--num-workers", type=int, default=2)
     # model
@@ -161,6 +162,7 @@ def main(argv=None):
         subset_fraction=args.subset,
         num_workers=args.num_workers,
         seed=args.seed,
+        balanced_sampler=args.balanced_sampler,
     )
 
     model_kwargs = {"num_classes": len(class_names)}

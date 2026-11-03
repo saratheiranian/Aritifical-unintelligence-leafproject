@@ -1,0 +1,9 @@
+# run in your terminal
+# pip install -r src/requirements.txt
+datasets
+torch
+matplotlib
+pandas
+--extra-index-url https://download.pytorch.org/whl/cpu
+scikit-learn
+torchvision
