@@ -1,6 +1,6 @@
 # Data card: PlantVillage (39 classes)
 
-Fill in the [brackets] once `python -m src.data_quality` has run. This card feeds report
+Numbers come from `python -m src.split_data`, `src.eda` and `src.data_quality` (3 Nov 2026). This card feeds report
 section 2 and the Responsible AI paragraph.
 
 ## Source
@@ -10,7 +10,9 @@ section 2 and the Responsible AI paragraph.
 - Original collection: the PlantVillage project. Cite Hughes, D.P., Salathé, M.: An open access
   repository of images on plant health to enable the development of mobile disease diagnostics.
   arXiv:1511.08060 (2015).
-- Licence: [check the Hugging Face dataset page and the original PlantVillage terms].
+- Licence: CC0 1.0 (public domain), as stated on the Hugging Face dataset card. The card gives no
+  source, citation or collection details; the class names and the extra "Background without leaves"
+  class match the 39-class version of PlantVillage that is widely used in the literature.
 - We do not redistribute the images: the repository only stores code and split indices.
 
 ## Contents
@@ -60,6 +62,10 @@ section 2 and the Responsible AI paragraph.
 - Closed set: any photo is mapped to one of the 39 classes, even a plant that is not in the dataset
   (a maple leaf was classified as "Background without leaves" with 97% confidence).
 - Imbalance: rare classes have fewer training examples, so their scores are less reliable.
-- Geography and varieties: [who collected the images, and where; not every variety or region is covered].
+- Geography and varieties: the Hugging Face card does not say where or how the images were taken.
+  The original PlantVillage photos were taken at agricultural research stations in the USA
+  (Hughes and Salathé, 2015), so other regions, varieties and growing conditions are not covered.
 - Near-duplicates: 30 groups of identical-looking images, 14 of them split across train/val/test; too few to change the results, so they were kept.
-- Mean brightness varies between classes (see `outputs/eda/quality_brightness_per_class.csv`), so the model could partly learn lighting rather than disease symptoms.
+- Mean brightness varies between classes, even within one crop: Corn Common rust averages 91.5
+  and Corn healthy 148.1 (`outputs/eda/quality_brightness_per_class.csv`). The model could partly
+  learn lighting rather than disease symptoms; colour jitter in training reduces this risk.

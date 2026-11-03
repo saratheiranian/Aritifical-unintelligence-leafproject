@@ -4,6 +4,30 @@ Running record of experiments, for the report's data, evaluation and project-man
 sections. Newest first. Runs below were tracked on app.clear.ml (project `PlantDisease`)
 while the KCL ClearML server was down.
 
+## 3 Nov 2026: data quality checks and balanced sampler (Sara, MacBook, Apple GPU)
+
+### Data quality (`python -m src.data_quality`, ClearML task `98283c9e959b446384d3236bb65fd0cf`)
+
+- All 55,447 images are RGB; 54,304 are 256x256 and 1,143 are 256x192.
+- 405 images (0.7%) flagged as very dark, very bright or low contrast.
+- 30 near-duplicate groups (68 images); 14 groups span more than one split, under 0.1% of the
+  test set, so they were kept. No duplicates have conflicting labels.
+- Mean brightness per class ranges from 91.5 (Corn Common rust) to 148.1 (Corn healthy).
+- EDA task `c0dc1ce16d824f50a2213e49d9211a48`; split registered as ClearML Dataset
+  `7d1a35d50f2d4fab994f3761743d0c57`.
+
+### Balanced sampler
+
+| Run | ClearML task | Data | Settings | Epochs | Best val acc | Test acc | Time |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Subset baseline (27 Oct) | `c5f26a161be6488da116cf6e0545b898` | 25% of train | defaults | 10 | – | 65.9% | – |
+| Subset + balanced sampler | `e26eb9580186490c87bc562083ef4bd2` | 25% of train | `--balanced-sampler` | 10 | 88.9% | 88.9% | 5.5 min (MPS) |
+
+Weighted avg precision / recall / F1 on test: 0.909 / 0.889 / 0.891. Macro F1 and the
+smallest classes: [add from the eval-balanced task]. The baseline run was not repeated on the
+same code version, so re-run it (`python -m src.train --subset 0.25 --epochs 10 --tags cnn subset baseline`)
+before claiming the whole gain comes from the sampler.
+
 ## 27 Oct 2026: first full training run (Sara, MacBook, Apple GPU)
 
 ### Data split (`python -m src.split_data`)
