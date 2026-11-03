@@ -47,7 +47,11 @@ as the brief recommends. Add `--no-clearml` to the train, evaluate and EDA scrip
 python -m src.split_data                   # class counts per split, stratification check
 python -m src.eda                          # plots to outputs/eda/ and ClearML
 python -m src.register_dataset             # version the split (row indices) as a ClearML Dataset
+python -m src.data_quality                 # image sizes, brightness, duplicates and split leakage
 ```
+
+Dataset details, class balance and known limitations are in [docs/data_card.md](docs/data_card.md).
+Train with `--balanced-sampler` to draw every class equally often (the classes are 36x imbalanced).
 
 ### 2. Train
 
