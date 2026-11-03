@@ -18,8 +18,8 @@ section 2 and the Responsible AI paragraph.
 - 55,447 RGB leaf photos, 39 classes: 38 crop/disease combinations across 14 crops, plus
   "Background without leaves".
 - One label per image (`label` column, a ClassLabel).
-- Image sizes: [from `outputs/eda/quality_sizes.csv`, e.g. "all 256x256"].
-- Colour modes: [from the data-quality output].
+- Image sizes: 54,304 at 256x256 and 1,143 at 256x192 (all resized to 128x128 for training).
+- Colour modes: all 55,447 images are RGB.
 
 ## Class balance
 
@@ -34,17 +34,17 @@ section 2 and the Responsible AI paragraph.
 - Stratified 70/15/15 train/validation/test with seed 42: 38,812 / 8,317 / 8,318 images.
 - Largest difference between a class's share in any split and in the full dataset: 0.0001.
 - The exact row indices of each split are stored as the ClearML Dataset `plant_village_split`
-  (`python -m src.register_dataset`).
+  (`python -m src.register_dataset`), ClearML Dataset ID `7d1a35d50f2d4fab994f3761743d0c57`.
 
 ## Quality checks (`python -m src.data_quality`)
 
 | Check | Result |
 | --- | --- |
-| Duplicate groups (same perceptual hash) | [number] groups, [number] images |
-| Duplicates spread across train/val/test (leakage) | [number] groups |
-| Duplicates with conflicting labels | [number] groups |
-| Very dark (< 40), very bright (> 215) or low-contrast (< 15) images | [number] |
-| Class with the lowest / highest mean brightness | [class, value] / [class, value] |
+| Duplicate groups (same perceptual hash) | 30 groups, 68 images |
+| Duplicates spread across train/val/test (leakage) | 14 groups (under 0.1% of the test set) |
+| Duplicates with conflicting labels | 0 groups |
+| Very dark (< 40), very bright (> 215) or low-contrast (< 15) images | 405 (0.7%) |
+| Class with the lowest / highest mean brightness | Corn Common rust, 91.5 / Corn healthy, 148.1 |
 
 ## Preprocessing
 
@@ -61,4 +61,5 @@ section 2 and the Responsible AI paragraph.
   (a maple leaf was classified as "Background without leaves" with 97% confidence).
 - Imbalance: rare classes have fewer training examples, so their scores are less reliable.
 - Geography and varieties: [who collected the images, and where; not every variety or region is covered].
-- [Add anything the quality checks turn up, e.g. duplicates or classes with different lighting.]
+- Near-duplicates: 30 groups of identical-looking images, 14 of them split across train/val/test; too few to change the results, so they were kept.
+- Mean brightness varies between classes (see `outputs/eda/quality_brightness_per_class.csv`), so the model could partly learn lighting rather than disease symptoms.
