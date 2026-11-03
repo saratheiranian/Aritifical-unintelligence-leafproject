@@ -10,12 +10,12 @@ Team number: 7
 
 | Name | Role |
 | --- | --- |
-| Sara | Project manager and report editor |
-| Precious | Data lead |
-| Amrit | Model lead |
-| Maryam and Media | Experiments lead |
-| Maryam and Media | Evaluation and quality lead |
-| Nischal | App and deployment lead |
+| Sara | Data lead |
+| Precious | Model lead |
+| Amrit | Experiments lead |
+| Maryam and Media | Evaluation lead |
+| Maryam and Media | App and deployment lead |
+| Nischal | Project manager and quality lead |
 
 ## Links
 
