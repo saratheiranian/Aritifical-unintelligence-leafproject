@@ -29,7 +29,8 @@ Partners review each other's pull requests: 1 and 2, 3 and 4, 5 and 6.
 
 | Stage | Status |
 | --- | --- |
-| Data split and EDA | Done: 38,812 train / 8,317 val / 8,318 test, stratified, seed 42 |
+| Data split, EDA and quality checks | Done: 38,812 train / 8,317 val / 8,318 test, stratified, seed 42; ClearML Dataset `7d1a35d50f2d4fab994f3761743d0c57`; see [docs/data_card.md](docs/data_card.md) |
+| Balanced sampler | Done: no accuracy gain on the 25% subset (88.9% vs 89.4% baseline) |
 | CNN from scratch, full data | Done: **99.0% test accuracy**, 99.99% top-5, macro F1 0.986 (20 epochs, 64 min on a MacBook GPU) |
 | Gradio app (local) | Done |
 | Hyperparameter sweep | To do (waiting for the KCL ClearML GPU queue) |
@@ -49,12 +50,12 @@ per-epoch numbers are in [docs/results.md](docs/results.md).
 | `src/data.py`, `src/transforms.py` | Loading PlantVillage, the 70/15/15 split, data loaders, resizing and augmentation |
 | `src/models.py` | `PlantCNN` (from scratch) and the ResNet18 baseline |
 | `src/train.py`, `src/evaluate.py` | Training with early stopping, test-set evaluation |
-| `src/split_data.py`, `src/eda.py`, `src/register_dataset.py` | Data checks, plots and ClearML dataset versioning |
+| `src/split_data.py`, `src/eda.py`, `src/data_quality.py`, `src/register_dataset.py` | Split check, EDA plots, image quality and duplicate checks, ClearML dataset versioning |
 | `src/sweep.py`, `src/compare_runs.py` | Hyperparameter experiments and the results table |
 | `src/inference.py`, `app/app.py` | Prediction helper and the Gradio app |
 | `src/make_app_assets.py`, `src/publish_model.py`, `src/deploy_space.py` | App images, Hugging Face model upload and Space deployment |
 | `tests/` | Unit tests, run by GitHub Actions on every push and pull request |
-| `docs/results.md` | Results log for the report |
+| `docs/results.md`, `docs/data_card.md` | Results log and dataset documentation for the report |
 
 ## Setup
 
