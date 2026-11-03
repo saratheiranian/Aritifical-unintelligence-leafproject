@@ -18,15 +18,20 @@ while the KCL ClearML server was down.
 
 ### Balanced sampler
 
-| Run | ClearML task | Data | Settings | Epochs | Best val acc | Test acc | Time |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Subset baseline (27 Oct) | `c5f26a161be6488da116cf6e0545b898` | 25% of train | defaults | 10 | – | 65.9% | – |
-| Subset + balanced sampler | `e26eb9580186490c87bc562083ef4bd2` | 25% of train | `--balanced-sampler` | 10 | 88.9% | 88.9% | 5.5 min (MPS) |
+| Run | ClearML task | Data | Settings | Epochs | Best val acc | Test acc | Macro F1 | Time |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Subset baseline (27 Oct) | `c5f26a161be6488da116cf6e0545b898` | 25% of train | defaults | 10 | – | 65.9% | – | – |
+| Subset baseline, re-run (3 Nov) | `5166a0838c3d4484a46ca2ad6638e609` (eval) | 25% of train | defaults | 10 | 89.5% | 89.4% | 0.867 | 5.4 min (MPS) |
+| Subset + balanced sampler | `e26eb9580186490c87bc562083ef4bd2` | 25% of train | `--balanced-sampler` | 10 | 88.9% | 88.9% | [from eval-balanced] | 5.5 min (MPS) |
 
-Weighted avg precision / recall / F1 on test: 0.909 / 0.889 / 0.891. Macro F1 and the
-smallest classes: [add from the eval-balanced task]. The baseline run was not repeated on the
-same code version, so re-run it (`python -m src.train --subset 0.25 --epochs 10 --tags cnn subset baseline`)
-before claiming the whole gain comes from the sampler.
+- Re-running the baseline on the current code gives 89.4%, not 65.9%, so the 27 Oct subset result
+  is not reproducible and should not be used. [Check that ClearML task's epochs and settings to find out why.]
+- With the same code and data, the balanced sampler gives no accuracy gain (88.9% vs 89.4%;
+  weighted F1 0.891 vs 0.893). Its effect on the smallest classes still has to be checked with the
+  per-class F1 of the eval-balanced task. In the baseline: Potato healthy F1 0.800 (recall 0.696),
+  Apple cedar rust 0.883, Grape healthy 0.676.
+- Weakest baseline classes on the 25% subset: Tomato Early blight (F1 0.626), Grape healthy (0.676),
+  Apple scab (0.715), Grape Esca (0.727), Corn Cercospora (0.732); all improve with full data.
 
 ## 27 Oct 2026: first full training run (Sara, MacBook, Apple GPU)
 
