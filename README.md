@@ -6,16 +6,16 @@ scratch in PyTorch, tracked in ClearML, served with Gradio on Hugging Face Space
 
 ## Team
 
-Team number: _TBD_
+Team number: 7
 
 | Name | Role |
 | --- | --- |
-| _TBD_ | Project manager and report editor |
-| _TBD_ | Data lead |
-| _TBD_ | Model lead |
-| _TBD_ | Experiments lead |
-| _TBD_ | Evaluation and quality lead |
-| _TBD_ | App and deployment lead |
+| Sara | Project manager and report editor |
+| Precious | Data lead |
+| Amrit | Model lead |
+| Maryam and Media | Experiments lead |
+| Maryam and Media | Evaluation and quality lead |
+| Nischal | App and deployment lead |
 
 ## Links
 
