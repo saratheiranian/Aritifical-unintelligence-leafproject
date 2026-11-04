@@ -1,10 +1,12 @@
+from pathlib import Path
+
 import numpy as np
 import pytest
 from datasets import ClassLabel, Dataset
 
 from src.evaluate import top_k_accuracy
 from src.register_dataset import split_indices
-from src.sweep import EXPERIMENTS, to_cli, to_clearml_params
+from src.sweep import EXPERIMENTS, to_clearml_params, to_cli
 from src.train import parse_args
 
 
@@ -46,6 +48,6 @@ def test_deploy_stage(tmp_path, checkpoint):
 
     out = tmp_path / "space"
     out.mkdir()
-    files = stage(out, [str(checkpoint)], "4.44.0")
-    assert {"app.py", "requirements.txt", "README.md", "src/inference.py", "models/cnn.pt"} <= set(files)
-    assert "sdk_version: 4.44.0" in (out / "README.md").read_text()
+    files = {Path(f).as_posix() for f in stage(out, [str(checkpoint)], "4.44.0")}
+    assert {"app.py", "requirements.txt", "README.md", "src/inference.py", "models/cnn.pt"} <= files
+    assert "sdk_version: 4.44.0" in (out / "README.md").read_text(encoding="utf-8")
