@@ -18,8 +18,8 @@ import inspect
 import os
 import sys
 import uuid
-from datetime import datetime, timezone
-from functools import lru_cache
+from datetime import UTC, datetime
+from functools import cache
 from pathlib import Path
 
 import gradio as gr
@@ -30,7 +30,7 @@ from PIL import Image
 HERE = Path(__file__).resolve().parent
 sys.path[:0] = [str(HERE), str(HERE.parent)]
 
-from src.inference import Predictor, pretty_name  # noqa: E402
+from src.inference import Predictor, pretty_name
 
 TOP_K = 5
 LOW_CONFIDENCE = 0.5
@@ -61,7 +61,7 @@ def find_checkpoints(cli_paths):
 
 
 def build_app(checkpoints):
-    @lru_cache(maxsize=None)
+    @cache
     def get_predictor(name):
         return Predictor(checkpoints[name])
 
@@ -109,7 +109,7 @@ def build_app(checkpoints):
             if new_file:
                 writer.writerow(["time", "image", "model", "predicted", "probability", "user_label"])
             writer.writerow([
-                datetime.now(timezone.utc).isoformat(timespec="seconds"), image_path.name,
+                datetime.now(UTC).isoformat(timespec="seconds"), image_path.name,
                 state["model"], state["predicted"], f"{state['probability']:.4f}", correct_label or "",
             ])
         return "Thanks, this prediction was flagged for review."
