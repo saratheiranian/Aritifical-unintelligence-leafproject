@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from src.models import PlantCNN, build_model, count_parameters
+from src.models import PlantCNN, build_model, count_parameters, get_device
 
 
 @pytest.mark.parametrize("img_size", [64, 128, 256])
@@ -32,3 +32,20 @@ def test_get_device_returns_a_usable_device():
     device = get_device()
     assert device.type in {"cuda", "mps", "cpu"}
     assert torch.zeros(1, device=device).device.type == device.type
+
+
+def test_resnet18_freeze_backbone_only_trains_the_head():
+    model = build_model("resnet18", pretrained=False, freeze_backbone=True, num_classes=5)
+    trainable = {name for name, p in model.named_parameters() if p.requires_grad}
+    assert trainable == {"fc.weight", "fc.bias"}
+    assert count_parameters(model) == 512 * 5 + 5
+
+
+@pytest.mark.parametrize(
+    "cuda, mps, expected",
+    [(True, False, "cuda"), (False, True, "mps"), (False, False, "cpu")],
+)
+def test_get_device_prefers_cuda_then_mps_then_cpu(monkeypatch, cuda, mps, expected):
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: cuda)
+    monkeypatch.setattr(torch.backends.mps, "is_available", lambda: mps)
+    assert get_device().type == expected

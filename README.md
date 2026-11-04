@@ -148,6 +148,8 @@ warning, training images of the predicted class, flagging wrong predictions (sav
 pytest --cov=src
 ```
 
+Coverage target: 80% (omits: make_app_assets.py, publish_model.py, sweep.py, compare_runs.py, register_dataset.py, eda.py, split_data.py).
+
 GitHub Actions runs the same tests on every push and pull request; keep them green before merging.
 
 ## Contributing

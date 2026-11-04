@@ -43,7 +43,7 @@ def stage(out, checkpoints, gradio_version):
     (out / "src").mkdir()
     for name in APP_SRC_FILES:
         shutil.copy(ROOT / "src" / name, out / "src" / name)
-    (out / "README.md").write_text(SPACE_README.format(gradio_version=gradio_version))
+    (out / "README.md").write_text(SPACE_README.format(gradio_version=gradio_version), encoding="utf-8")
     for folder in ["examples", "class_examples"]:
         if (ROOT / "app" / folder).is_dir():
             shutil.copytree(ROOT / "app" / folder, out / folder)
