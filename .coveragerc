@@ -1,0 +1,21 @@
+[run]
+source = src
+omit =
+    # Need Gradio / the Hugging Face Space (not developed yet)
+    src/deploy_space.py
+    src/make_app_assets.py
+    src/publish_model.py
+
+    # Need ClearML (server currently erroring)
+    src/sweep.py
+    src/compare_runs.py
+    src/register_dataset.py
+    
+    # One-off scripts that load the real dataset or draw plots
+    src/eda.py
+    src/split_data.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
