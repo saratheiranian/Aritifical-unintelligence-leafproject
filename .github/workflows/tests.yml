@@ -19,3 +19,5 @@ jobs:
         run: pip install datasets pandas pillow scikit-learn matplotlib tabulate gradio pytest pytest-cov
       - name: Run tests with coverage
         run: pytest --cov=src --cov-report=term-missing
+      - name: Run ruff linter
+        run: pip install ruff && ruff check src/ test/ app/
