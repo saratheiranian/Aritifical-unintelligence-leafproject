@@ -22,7 +22,7 @@ import time
 
 import numpy as np
 import torch
-import torch.nn as nn
+from torch import nn
 
 from src.data import make_loaders
 from src.models import build_model, count_parameters, get_device

@@ -4,7 +4,7 @@ from datasets import ClassLabel, Dataset
 
 from src.evaluate import top_k_accuracy
 from src.register_dataset import split_indices
-from src.sweep import EXPERIMENTS, to_cli, to_clearml_params
+from src.sweep import EXPERIMENTS, to_clearml_params, to_cli
 from src.train import parse_args
 
 

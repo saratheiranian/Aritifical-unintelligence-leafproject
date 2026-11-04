@@ -1,7 +1,7 @@
 """Model architectures: a CNN written from scratch, plus an optional ResNet18 baseline."""
 
 import torch
-import torch.nn as nn
+from torch import nn
 from torchvision import models
 
 NUM_CLASSES = 39

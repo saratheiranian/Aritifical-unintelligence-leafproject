@@ -1,0 +1,2 @@
+[tool.ruff.lint]
+ignore = ["UP017"]  # UTC timezone availability (Python 3.11+)
