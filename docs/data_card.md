@@ -51,8 +51,15 @@ section 2 and the Responsible AI paragraph.
 ## Preprocessing
 
 - Resize to 128x128 (configurable with `--img-size`) and normalise with the ImageNet mean and std.
-- Training only: random horizontal flip, rotation up to 15°, colour jitter. Validation and test
-  images are only resized and normalised.
+- Training only, chosen with `--augment`:
+  - `none`: no random changes.
+  - `basic` (default): random horizontal flip, rotation up to 15°, colour jitter ±20%.
+  - `strong`: random crop of 70-100% of the image, horizontal and vertical flips, rotation up to
+    30°, colour jitter ±40% with a small hue shift, Gaussian blur on 30% of images. Meant to
+    break the link between lighting and class (class brightness ranges from 91 to 148) and to
+    make lab photos look more like field photos.
+- Validation and test images are only resized and normalised.
+- Results of the three levels: see `docs/results.md` (4 Nov).
 
 ## Known limitations and biases
 

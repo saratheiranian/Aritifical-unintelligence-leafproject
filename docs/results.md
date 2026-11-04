@@ -4,6 +4,30 @@ Running record of experiments, for the report's data, evaluation and project-man
 sections. Newest first. Runs below were tracked on app.clear.ml (project `PlantDisease`)
 while the KCL ClearML server was down.
 
+## 4 Nov 2026: augmentation study (Sara, MacBook, Apple GPU)
+
+25% training subset, 10 epochs, default CNN, evaluated on the full test set (8,318 images).
+`python -m src.train --subset 0.25 --epochs 10 --augment <level>` then `python -m src.evaluate`.
+
+| Augmentation | Test acc | Top-5 | Macro F1 | Weighted F1 | Best val acc | ClearML train task |
+| --- | --- | --- | --- | --- | --- | --- |
+| none | 91.4% | 99.5% | 0.881 | 0.912 | 91.0% (epoch 9) | `967dd4f0b1ee494994490febdb1fc157` |
+| basic (default) | 89.4% | | 0.867 | 0.893 | | baseline re-run, 3 Nov |
+| strong | 80.6% | 98.0% | 0.760 | 0.801 | 80.7% (epoch 10) | `0cc43dfc41094935a7dd024058f32ce1` |
+
+- Without augmentation, clean test accuracy is 2 points higher after 10 epochs: augmentation
+  makes training harder and needs more epochs to pay off. Its expected benefit is on distorted
+  or field-like images, so compare the checkpoints in the robustness tests too.
+- Strong augmentation is clearly worse after 10 epochs (80.6%) but is underfitting, not
+  failing: its training accuracy (75%) is below its validation accuracy (81%), and validation
+  accuracy was still rising at epoch 10. It needs a longer run before it can be judged; its
+  weakest classes are Tomato target spot (F1 0.24), Pepper bacterial spot (0.34) and Potato
+  healthy (0.50). (A first strong run, task `189f4a6be0a44b24a822aaeaf8900ff4`, hung on a
+  ClearML upload at epoch 8 and was discarded.)
+- Weakest classes without augmentation: Grape healthy (F1 0.49, recall 0.33), Tomato early
+  blight (0.67), Apple scab (0.73), Potato healthy (0.74).
+- Figure of the three levels: `outputs/eda/augmentation_levels.png` (`python -m src.augment_preview`).
+
 ## 3 Nov 2026: data quality checks and balanced sampler (Sara, MacBook, Apple GPU)
 
 ### Data quality (`python -m src.data_quality`, ClearML task `98283c9e959b446384d3236bb65fd0cf`)
