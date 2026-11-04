@@ -4,6 +4,35 @@ Running record of experiments, for the report's data, evaluation and project-man
 sections. Newest first. Runs below were tracked on app.clear.ml (project `PlantDisease`)
 while the KCL ClearML server was down.
 
+## 3 Nov 2026: data quality checks and balanced sampler (Sara, MacBook, Apple GPU)
+
+### Data quality (`python -m src.data_quality`, ClearML task `98283c9e959b446384d3236bb65fd0cf`)
+
+- All 55,447 images are RGB; 54,304 are 256x256 and 1,143 are 256x192.
+- 405 images (0.7%) flagged as very dark, very bright or low contrast.
+- 30 near-duplicate groups (68 images); 14 groups span more than one split, under 0.1% of the
+  test set, so they were kept. No duplicates have conflicting labels.
+- Mean brightness per class ranges from 91.5 (Corn Common rust) to 148.1 (Corn healthy).
+- EDA task `c0dc1ce16d824f50a2213e49d9211a48`; split registered as ClearML Dataset
+  `7d1a35d50f2d4fab994f3761743d0c57`.
+
+### Balanced sampler
+
+| Run | ClearML task | Data | Settings | Epochs | Best val acc | Test acc | Macro F1 | Time |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Subset baseline (27 Oct) | `c5f26a161be6488da116cf6e0545b898` | 25% of train | defaults | 10 | – | 65.9% | – | – |
+| Subset baseline, re-run (3 Nov) | `5166a0838c3d4484a46ca2ad6638e609` (eval) | 25% of train | defaults | 10 | 89.5% | 89.4% | 0.867 | 5.4 min (MPS) |
+| Subset + balanced sampler | `e26eb9580186490c87bc562083ef4bd2` | 25% of train | `--balanced-sampler` | 10 | 88.9% | 88.9% | [from eval-balanced] | 5.5 min (MPS) |
+
+- Re-running the baseline on the current code gives 89.4%, not 65.9%, so the 27 Oct subset result
+  is not reproducible and should not be used. [Check that ClearML task's epochs and settings to find out why.]
+- With the same code and data, the balanced sampler gives no accuracy gain (88.9% vs 89.4%;
+  weighted F1 0.891 vs 0.893). Its effect on the smallest classes still has to be checked with the
+  per-class F1 of the eval-balanced task. In the baseline: Potato healthy F1 0.800 (recall 0.696),
+  Apple cedar rust 0.883, Grape healthy 0.676.
+- Weakest baseline classes on the 25% subset: Tomato Early blight (F1 0.626), Grape healthy (0.676),
+  Apple scab (0.715), Grape Esca (0.727), Corn Cercospora (0.732); all improve with full data.
+
 ## 27 Oct 2026: first full training run (Sara, MacBook, Apple GPU)
 
 ### Data split (`python -m src.split_data`)
