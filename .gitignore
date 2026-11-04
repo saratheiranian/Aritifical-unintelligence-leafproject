@@ -6,6 +6,10 @@ venv/
 .pytest_cache/
 .coverage
 htmlcov/
+pyvenv.cfg
+
+# Ruff
+.ruff_cache/
 
 # Data, models and outputs (never commit these; the brief says not to submit them)
 data/
