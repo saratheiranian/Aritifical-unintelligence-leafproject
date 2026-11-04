@@ -109,6 +109,7 @@ def make_loaders(
 ):
     """Build train/val/test DataLoaders. Returns (loaders, class_names).
 
+    augment: "none", "basic" or "strong" (True/False also work); applied to training only.
     balanced_sampler=True draws training images so every class is equally likely
     (validation and test keep the real class distribution).
     """
@@ -119,7 +120,7 @@ def make_loaders(
 
     loaders = {}
     for name, split in splits.items():
-        transform = get_transforms(img_size, augment=(augment and name == "train"))
+        transform = get_transforms(img_size, augment=augment if name == "train" else False)
         sampler = None
         if name == "train" and balanced_sampler:
             sampler = make_balanced_sampler(list(split[label_col]), len(class_names), seed=seed)

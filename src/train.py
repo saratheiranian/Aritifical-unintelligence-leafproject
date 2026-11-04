@@ -35,7 +35,9 @@ def parse_args(argv=None):
     # data
     p.add_argument("--img-size", type=int, default=128)
     p.add_argument("--subset", type=float, default=1.0, help="fraction of the training split")
-    p.add_argument("--no-augment", action="store_true")
+    p.add_argument("--augment", choices=["none", "basic", "strong"], default="basic",
+                   help="training augmentation strength")
+    p.add_argument("--no-augment", action="store_true", help="same as --augment none")
     p.add_argument("--balanced-sampler", action="store_true", help="draw every class equally often in training")
     p.add_argument("--batch-size", type=int, default=64)
     p.add_argument("--num-workers", type=int, default=2)
@@ -157,7 +159,7 @@ def main(argv=None):
     device = get_device()
     loaders, class_names = make_loaders(
         img_size=args.img_size,
-        augment=not args.no_augment,
+        augment="none" if args.no_augment else args.augment,
         batch_size=args.batch_size,
         subset_fraction=args.subset,
         num_workers=args.num_workers,

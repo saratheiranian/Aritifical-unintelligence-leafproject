@@ -50,6 +50,26 @@ python -m src.evaluate --checkpoint outputs/best_model.pt      # after each run
       runs save to `outputs/best_model.pt`.
 - [ ] Give the experiments lead the result. The variant is also in the sweep as `balanced-sampler`.
 
+## 3b. Augmentation study (new, `--augment none|basic|strong`)
+
+Class brightness ranges from 91 to 148 (0-255), so a model could learn lighting instead of
+disease. `strong` adds random crops, vertical flips, larger rotations, stronger colour jitter
+and occasional blur. Compare the three levels on the 25% subset, evaluating straight after each run:
+
+```bash
+python -m src.augment_preview          # outputs/eda/augmentation_levels.png, for report section 2
+python -m src.train --subset 0.25 --epochs 10 --augment none   --tags cnn subset aug-none
+python -m src.evaluate --checkpoint outputs/best_model.pt
+python -m src.train --subset 0.25 --epochs 10 --augment strong --tags cnn subset aug-strong
+python -m src.evaluate --checkpoint outputs/best_model.pt
+```
+
+The `basic` run is the baseline re-run you already have (89.4%, macro F1 0.867).
+
+- [ ] Add test accuracy and macro F1 for all three levels to `docs/results.md`.
+- [ ] Give the robustness lead (role 4) the strong-augmentation checkpoint: it should do better
+      on the brightness and blur tests even if clean accuracy is similar.
+
 ## 4. Data card and report section 2 (by 15 Nov)
 
 - [ ] Finish `docs/data_card.md` (fill every [bracket]).
