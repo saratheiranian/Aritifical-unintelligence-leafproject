@@ -18,7 +18,7 @@ import inspect
 import os
 import sys
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from functools import cache
 from pathlib import Path
 
@@ -109,7 +109,7 @@ def build_app(checkpoints):
             if new_file:
                 writer.writerow(["time", "image", "model", "predicted", "probability", "user_label"])
             writer.writerow([
-                datetime.now(UTC).isoformat(timespec="seconds"), image_path.name,
+                datetime.now(timezone.utc).isoformat(timespec="seconds"), image_path.name,
                 state["model"], state["predicted"], f"{state['probability']:.4f}", correct_label or "",
             ])
         return "Thanks, this prediction was flagged for review."

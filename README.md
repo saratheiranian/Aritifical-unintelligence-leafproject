@@ -8,14 +8,6 @@ scratch in PyTorch, tracked in ClearML, served with Gradio on Hugging Face Space
 
 Team number: 7
 
-| Name | Role |
-| --- | --- |
-| Sara | Data lead |
-| Precious | Model lead |
-| Amrit | Experiments lead |
-| Maryam and Media | Evaluation lead |
-| Maryam and Media | App and deployment lead |
-| Nischal | Project manager and quality lead |
 | Role | Name | Owns |
 | --- | --- | --- |
 | 1. Data lead | Sara | Data loading, split, EDA, data quality checks, balanced sampler, data card |
