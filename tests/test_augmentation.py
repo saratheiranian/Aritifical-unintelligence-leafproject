@@ -4,7 +4,7 @@ from PIL import Image
 from torchvision import transforms
 
 from src.augment_preview import augmented_copies, preview_figure
-from src.sweep import VARIANTS, to_cli
+from src.sweep import EXPERIMENTS, to_cli
 from src.train import parse_args
 from src.transforms import AUGMENT_LEVELS, augmentation_steps, get_transforms
 
@@ -62,4 +62,4 @@ def test_train_cli_and_sweep_accept_augment_levels():
     assert parse_args([]).augment == "basic"
     assert parse_args(["--augment", "strong"]).augment == "strong"
     assert parse_args(["--no-augment"]).no_augment
-    assert to_cli(VARIANTS["augment-strong"]) == ["--augment", "strong"]
+    assert to_cli(EXPERIMENTS["augment-strong"]) == ["--augment", "strong"]
