@@ -12,7 +12,7 @@ import pandas as pd
 
 from src.train import CLEARML_PROJECT
 
-PARAMS = ["arch", "lr", "optimizer", "batch_size", "dropout", "no_batchnorm", "no_augment",
+PARAMS = ["arch", "lr", "optimizer", "batch_size", "dropout", "no_batchnorm", "no_augment", "augment",
           "depth", "base_channels", "scheduler", "img_size", "subset"]
 
 
