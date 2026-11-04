@@ -1,8 +1,7 @@
 [run]
 source = src
 omit =
-    # Need Gradio / the Hugging Face Space (not developed yet)
-    src/deploy_space.py
+    # Need Gradio / the Hugging Face Space
     src/make_app_assets.py
     src/publish_model.py
 
