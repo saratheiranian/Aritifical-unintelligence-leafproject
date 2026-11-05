@@ -24,7 +24,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from src.data import make_loaders
+from src.data import class_weights, make_loaders
 from src.models import build_model, count_parameters, get_device
 
 CLEARML_PROJECT = "PlantDisease"  # change to the project name your ClearML guide asks for
@@ -42,7 +42,7 @@ def parse_args(argv=None):
     p.add_argument("--batch-size", type=int, default=64)
     p.add_argument("--num-workers", type=int, default=2)
     # model
-    p.add_argument("--arch", choices=["cnn", "resnet18"], default="cnn")
+    p.add_argument("--arch", choices=["cnn", "rescnn", "resnet18"], default="cnn")
     p.add_argument("--base-channels", type=int, default=32)
     p.add_argument("--depth", type=int, default=4)
     p.add_argument("--dropout", type=float, default=0.3)
@@ -52,6 +52,10 @@ def parse_args(argv=None):
     p.add_argument("--optimizer", choices=["adam", "adamw"], default="adamw")
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--weight-decay", type=float, default=1e-4)
+    p.add_argument("--label-smoothing", type=float, default=0.0,
+                   help="spread this much of each target's probability over the other classes")
+    p.add_argument("--class-weights", action="store_true",
+                   help="weight the training loss by inverse class frequency")
     p.add_argument("--scheduler", choices=["none", "cosine", "plateau"], default="none")
     p.add_argument("--epochs", type=int, default=20)
     p.add_argument("--patience", type=int, default=3, help="early stopping patience (epochs)")
@@ -102,6 +106,22 @@ def make_scheduler(name, optimizer, epochs):
     if name == "plateau":
         return torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="max", factor=0.5, patience=1)
     return None
+
+
+def dataset_labels(dataset):
+    """Training labels without loading images (LeafDataset), or by iterating any other dataset."""
+    if hasattr(dataset, "ds") and hasattr(dataset, "label_col"):
+        return list(dataset.ds[dataset.label_col])
+    return [int(dataset[i][1]) for i in range(len(dataset))]
+
+
+def make_criterion(args, train_dataset, num_classes, device):
+    """Training loss: cross-entropy, optionally with label smoothing and inverse-frequency weights."""
+    weight = None
+    if args.class_weights:
+        labels = dataset_labels(train_dataset)
+        weight = torch.tensor(class_weights(labels, num_classes), dtype=torch.float32, device=device)
+    return nn.CrossEntropyLoss(weight=weight, label_smoothing=args.label_smoothing)
 
 
 def run_epoch(model, loader, criterion, device, optimizer=None):
@@ -168,7 +188,7 @@ def main(argv=None):
     )
 
     model_kwargs = {"num_classes": len(class_names)}
-    if args.arch == "cnn":
+    if args.arch in ("cnn", "rescnn"):
         model_kwargs |= {
             "base_channels": args.base_channels,
             "depth": args.depth,
@@ -183,7 +203,8 @@ def main(argv=None):
     # Saved copies are rebuilt from model_kwargs, so a fine-tuned ResNet must not re-download weights.
     saved_kwargs = {**model_kwargs, "pretrained": False} if args.arch == "resnet18" else model_kwargs
 
-    criterion = nn.CrossEntropyLoss()
+    criterion = make_criterion(args, loaders["train"].dataset, len(class_names), device)
+    eval_criterion = nn.CrossEntropyLoss()  # validation loss stays comparable across runs
     opt_cls = torch.optim.AdamW if args.optimizer == "adamw" else torch.optim.Adam
     params = [p for p in model.parameters() if p.requires_grad]
     optimizer = opt_cls(params, lr=args.lr, weight_decay=args.weight_decay)
@@ -198,7 +219,7 @@ def main(argv=None):
     for epoch in range(1, args.epochs + 1):
         epoch_start = time.time()
         train_loss, train_acc = run_epoch(model, loaders["train"], criterion, device, optimizer)
-        val_loss, val_acc = run_epoch(model, loaders["val"], criterion, device)
+        val_loss, val_acc = run_epoch(model, loaders["val"], eval_criterion, device)
         epoch_time = time.time() - epoch_start
         lr = optimizer.param_groups[0]["lr"]
         print(

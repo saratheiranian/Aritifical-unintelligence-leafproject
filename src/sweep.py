@@ -36,6 +36,9 @@ EXPERIMENTS = {
     "cosine-lr": {"scheduler": "cosine"},
     "img-256": {"img_size": 256, "batch_size": 32},
     "resnet18": {"arch": "resnet18", "lr": 3e-4},
+    "rescnn": {"arch": "rescnn"},
+    "label-smoothing-0.1": {"label_smoothing": 0.1},
+    "class-weights": {"class_weights": True},
 }
 
 

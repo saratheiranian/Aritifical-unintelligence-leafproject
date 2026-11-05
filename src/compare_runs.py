@@ -13,7 +13,8 @@ import pandas as pd
 from src.train import CLEARML_PROJECT
 
 PARAMS = ["arch", "lr", "optimizer", "batch_size", "dropout", "no_batchnorm", "no_augment", "augment",
-          "depth", "base_channels", "scheduler", "img_size", "subset"]
+          "depth", "base_channels", "scheduler", "img_size", "subset",
+          "label_smoothing", "class_weights", "balanced_sampler"]
 
 
 def summarise(task):
