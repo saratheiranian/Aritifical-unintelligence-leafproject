@@ -102,7 +102,14 @@ python -m src.train --subset 0.25 --epochs 10 --tags cnn subset            # loc
 python -m src.train --scheduler cosine --patience 4 --tags cnn full        # full data (the 99% model)
 python -m src.train --subset 0.25 --queue <gpu-queue-name> --tags cnn      # KCL GPU worker
 python -m src.train --arch resnet18 --lr 3e-4 --queue <gpu-queue-name>     # transfer-learning baseline
+python -m src.train --arch rescnn --subset 0.25 --epochs 10 --tags rescnn    # residual CNN from scratch
+python -m src.train --label-smoothing 0.1 --class-weights --subset 0.25      # loss options
 ```
+
+Architectures (`--arch`): `cnn` is a plain CNN (conv, batch norm, ReLU, max pool blocks);
+`rescnn` is a small ResNet-style CNN written from scratch, with skip connections; `resnet18` is
+the pretrained ImageNet ResNet18 with a new final layer. `--depth`, `--base-channels`,
+`--dropout` and `--no-batchnorm` apply to both from-scratch models.
 
 Remote runs: the ClearML agent clones the repository at your last pushed commit, so commit and
 push first. The queue name is on the Workers & Queues page of the KCL ClearML server. The GPU
