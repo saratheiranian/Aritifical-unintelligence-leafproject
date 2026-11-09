@@ -3,7 +3,16 @@
 Running record of experiments, for the report's data, evaluation and project-management
 sections. Newest first. Runs below were tracked on app.clear.ml (project `PlantDisease`)
 while the KCL ClearML server was down.
+## 9 Nov 2026: leak check (Sara)
 
+`python -m src.leak_check --checkpoint outputs/final_model.pt` on the final 99% model
+(ClearML train task `1bee769f0c32413e8b0ad57fdcc7d626`).
+
+| Test images | With a copy in train/val | Accuracy all | Accuracy leaked | Accuracy clean |
+| --- | --- | --- | --- | --- |
+| 8,318 | 7 (0.08%) | 99.00% | 100% | 99.00% |
+
+The duplicate leak does not change the headline accuracy, so the split stays as it is.
 ## 4 Nov 2026: augmentation study (Sara, MacBook, Apple GPU)
 
 25% training subset, 10 epochs, default CNN, evaluated on the full test set (8,318 images).
