@@ -64,8 +64,9 @@ section 2 and the Responsible AI paragraph.
 ## Known limitations and biases
 
 - Lab conditions: mostly single leaves on plain backgrounds, photographed in a controlled setting.
-  Field photos (several leaves, soil, shadows, other plants) look different, so accuracy on them
-  will be lower.
+  Field photos (several leaves, soil, shadows, other plants) look very different. Measured on 236
+  PlantDoc field photos of 27 shared classes, the 99% model reaches only 14.4% accuracy (macro F1
+  0.128, chance 2.6%); see "Field-photo test" below. This is the most important limitation.
 - Closed set: any photo is mapped to one of the 39 classes, even a plant that is not in the dataset
   (a maple leaf was classified as "Background without leaves" with 97% confidence).
 - Imbalance: rare classes have fewer training examples, so their scores are less reliable.
@@ -76,3 +77,16 @@ section 2 and the Responsible AI paragraph.
 - Mean brightness varies between classes, even within one crop: Corn Common rust averages 91.5
   and Corn healthy 148.1 (`outputs/eda/quality_brightness_per_class.csv`). The model could partly
   learn lighting rather than disease symptoms; colour jitter in training reduces this risk.
+
+## Field-photo test (PlantDoc, `python -m src.field_test`)
+
+- Source: PlantDoc test split (Singh, D. et al.: PlantDoc: A Dataset for Visual Plant Disease
+  Detection. CoDS-COMAD 2020), CC BY 4.0, cloned into `data/PlantDoc` (not committed).
+- 236 cropped leaf photos taken in real conditions; 27 of its folders map to our classes
+  (table in `src/field_test.py`). Used only for testing, never for training.
+- Result: 99.0% on PlantVillage test, 14.4% on PlantDoc (17.8% when predictions are limited to the
+  27 shared classes, top-5 40.7%). Best on large, distinctive lesions (Corn common rust, Squash
+  powdery mildew); 13 classes, including all healthy leaves of Tomato, Cherry, Peach, Soybean and
+  Strawberry, are never recognised.
+- Intended use therefore: a demonstration on PlantVillage-style photos (single leaf, plain
+  background), not a diagnosis tool for farmers. The app should say so next to the upload box.
