@@ -138,3 +138,49 @@ for 20 epochs, and the cosine learning-rate schedule. The sweep should separate 
   then `src/compare_runs.py` for the results table.
 - ResNet18 transfer-learning baseline.
 - Deploy to a Hugging Face Space and record the link in the README.
+
+## 10 Nov 2026: field-photo test (PlantDoc)
+
+`python -m src.field_test --checkpoint outputs/final_model.pt --plantdoc-dir data/PlantDoc/test`:
+the 99% model on the PlantDoc test split (Singh et al., 2020, CC BY 4.0), real field photos of the
+27 classes PlantDoc shares with PlantVillage.
+
+| Test set | Images | Classes | Accuracy | Top-5 | Macro F1 |
+|---|---|---|---|---|---|
+| PlantVillage test (lab photos) | 8,318 | 39 | 99.0% | | |
+| PlantDoc, model picks from all 39 classes | 236 | 27 | 14.4% | 40.7% | 0.128 |
+| PlantDoc, prediction limited to the 27 shared classes | 236 | 27 | 17.8% | | |
+
+- Accuracy falls from 99% to 14% on field photos (chance is 2.6%). The model has learnt the
+  PlantVillage setting (one leaf, plain background, even lighting) as much as the disease itself.
+- Limiting predictions to the shared classes only adds 3 points, so the errors are not just
+  confusion with classes missing from PlantDoc.
+- Best field classes: Corn common rust (F1 0.44), Squash powdery mildew (0.43), Tomato late
+  blight (0.37), Potato early blight (0.35): large, distinctive lesions.
+- 13 of 27 classes score F1 0, including all healthy Tomato, Cherry, Peach, Soybean and Strawberry
+  leaves and most Tomato diseases.
+- Consequence: the app must warn users that it is trained on lab photos of single leaves and is not
+  reliable on field photos. Fine-tuning on field images (e.g. PlantDoc train) is future work.
+
+## 10 Nov 2026: field-photo test (PlantDoc)
+
+`python -m src.field_test --checkpoint outputs/final_model.pt --plantdoc-dir data/PlantDoc/test`:
+the 99% model on the PlantDoc test split (Singh et al., 2020, CC BY 4.0), real field photos of the
+27 classes PlantDoc shares with PlantVillage.
+
+| Test set | Images | Classes | Accuracy | Top-5 | Macro F1 |
+|---|---|---|---|---|---|
+| PlantVillage test (lab photos) | 8,318 | 39 | 99.0% | | |
+| PlantDoc, model picks from all 39 classes | 236 | 27 | 14.4% | 40.7% | 0.128 |
+| PlantDoc, prediction limited to the 27 shared classes | 236 | 27 | 17.8% | | |
+
+- Accuracy falls from 99% to 14% on field photos (chance is 2.6%). The model has learnt the
+  PlantVillage setting (one leaf, plain background, even lighting) as much as the disease itself.
+- Limiting predictions to the shared classes only adds 3 points, so the errors are not just
+  confusion with classes missing from PlantDoc.
+- Best field classes: Corn common rust (F1 0.44), Squash powdery mildew (0.43), Tomato late
+  blight (0.37), Potato early blight (0.35): large, distinctive lesions.
+- 13 of 27 classes score F1 0, including all healthy Tomato, Cherry, Peach, Soybean and Strawberry
+  leaves and most Tomato diseases.
+- Consequence: the app must warn users that it is trained on lab photos of single leaves and is not
+  reliable on field photos. Fine-tuning on field images (e.g. PlantDoc train) is future work.
