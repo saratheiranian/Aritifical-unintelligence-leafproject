@@ -34,11 +34,16 @@ Files that would be uploaded to the Space:
 
 ## Space creation blocked (10 Nov)
 
-- `python -m src.deploy_space` failed with `402 Payment Required`: "Static Spaces are free for everyone,
+- The full deploy command:
+
+      python -m src.deploy_space --space-id Media1234/plant-disease-classifier --hf-model-repo Media1234/plant-disease-cnn
+
+  failed with `402 Payment Required`: "Static Spaces are free for everyone,
   but hosting Gradio and Docker Spaces on free cpu-basic requires a PRO subscription."
-- Since 2026, Hugging Face requires a paid plan to create Gradio Spaces. Free accounts older than 30 days
-  can still host up to 2 Gradio Spaces on ZeroGPU; new accounts cannot.
-- The lecturer confirmed this on the KEATS Q&A forum ("Gradio tutorial"): do not buy a subscription,
+- The Hugging Face documentation says that Gradio and Docker Spaces require a paid plan to create,
+  and that free personal accounts in good standing can still host up to 2 Gradio Spaces on ZeroGPU
+  (source: https://huggingface.co/docs/hub/en/spaces-overview). We have not tried the ZeroGPU option.
+- The lecturer confirmed the problem on the KEATS Q&A forum ("Gradio tutorial"): do not buy a subscription,
   keep testing locally or in Colab, and the teaching team will clarify the deployment arrangements.
 
 ## Next
