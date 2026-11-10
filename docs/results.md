@@ -161,3 +161,16 @@ the 99% model on the PlantDoc test split (Singh et al., 2020, CC BY 4.0), real f
   leaves and most Tomato diseases.
 - Consequence: the app must warn users that it is trained on lab photos of single leaves and is not
   reliable on field photos. Fine-tuning on field images (e.g. PlantDoc train) is future work.
+
+### Augmentation on field photos (10 Nov)
+
+`python -m src.field_test --checkpoint outputs/shared_models/cnn_augment-<level>.pt` (4 Nov checkpoints, 25% subset, 10 epochs).
+
+| Augmentation | PlantVillage test | PlantDoc field test | Field top-5 | Field macro F1 |
+|---|---|---|---|---|
+| none | 91.4% | 6.4% | 31.4% | 0.062 |
+| strong | 80.6% | 10.2% | 39.4% | 0.093 |
+
+Strong augmentation costs 11 points on lab photos but gains 4 points on field photos, which suggests it
+reduces reliance on the PlantVillage setting. With 236 field images the gap is about 9 photos, so it is
+suggestive, not conclusive. Worth trying strong augmentation with more epochs for the final model.
