@@ -21,6 +21,26 @@ Files that would be uploaded to the Space:
 
 `examples/` and `class_examples/` are added after running `python -m src.make_app_assets`.
 
+## Local test (task 6, 10 Nov)
+
+- `python app/app.py --checkpoint outputs/final_model.pt` runs with Gradio 6.31 and the 99% model.
+- A test leaf photo gave "Corn: Common rust" at 73%, with the top 5 chart and probability table.
+- The "training images of the predicted class" gallery is empty until `python -m src.make_app_assets` is run (task 2).
+
+## Model upload (task 6, 10 Nov)
+
+- `python -m src.publish_model --repo-id Media1234/plant-disease-cnn --checkpoint outputs/final_model.pt`
+- The model is on the Hugging Face Hub as `cnn.pt`: https://huggingface.co/Media1234/plant-disease-cnn
+
+## Space creation blocked (10 Nov)
+
+- `python -m src.deploy_space` failed with `402 Payment Required`: "Static Spaces are free for everyone,
+  but hosting Gradio and Docker Spaces on free cpu-basic requires a PRO subscription."
+- Since 2026, Hugging Face requires a paid plan to create Gradio Spaces. Free accounts older than 30 days
+  can still host up to 2 Gradio Spaces on ZeroGPU; new accounts cannot.
+- The lecturer confirmed this on the KEATS Q&A forum ("Gradio tutorial"): do not buy a subscription,
+  keep testing locally or in Colab, and the teaching team will clarify the deployment arrangements.
+
 ## Next
 
-- Task 6: publish the model and deploy the Space once `final_model.pt` is available.
+- Deploy the Space once the teaching team confirms the deployment option.
