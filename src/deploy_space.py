@@ -1,6 +1,6 @@
 """Deploy the Gradio app to a public Hugging Face Space.
 
-    huggingface-cli login            # once, with a token that has write access
+    hf auth login            # once, with a token that has write access
     python -m src.make_app_assets    # optional: example gallery + class examples
     python -m src.deploy_space --space-id <hf-user>/plant-disease-classifier \
         --checkpoint outputs/best_model.pt

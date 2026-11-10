@@ -1,6 +1,6 @@
 """Upload a trained checkpoint to the Hugging Face Hub, with a model card.
 
-    huggingface-cli login            # once, with a token that has write access
+    hf auth login           # once, with a token that has write access
     python -m src.publish_model --repo-id <hf-user>/plant-disease-cnn --checkpoint outputs/best_model.pt
     python -m src.publish_model --repo-id <hf-user>/plant-disease-cnn --clearml-model-id <id> --filename cnn.pt
 
