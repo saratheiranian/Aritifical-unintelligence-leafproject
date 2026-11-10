@@ -3,6 +3,85 @@
 Running record of experiments, for the report's data, evaluation and project-management
 sections. Newest first. Runs below were tracked on app.clear.ml (project `PlantDisease`)
 while the KCL ClearML server was down.
+
+## 10 Nov 2026: robustness test on distorted test images (Maryam, MacBook, Apple GPU)
+
+```bash
+python -m src.robustness --checkpoint outputs/final_model.pt outputs/cnn_augment-none.pt \
+    outputs/cnn_augment-strong.pt --no-clearml
+```
+
+All 8,318 test images, 7 distortions at 3 strengths each (22 levels including clean). Each batch
+is distorted once and given to all three models, so they see identical images; the noise is seeded,
+so the run is repeatable. Distortions are applied to the original image before the usual resize to
+128x128, as they would be in a phone photo. Not logged to ClearML yet (no workspace access); re-run
+without `--no-clearml` for a task ID. Figures (not committed): `outputs/robustness/robustness_accuracy.png`
+and `outputs/robustness/distortions_preview.png`.
+
+Models: `final_model` is the 99% model (all training data, 20 epochs, basic augmentation, task
+`1bee769f0c32413e8b0ad57fdcc7d626`); `augment-none` and `augment-strong` are the 4 Nov subset models
+(25% of the data, 10 epochs, tasks `967dd4f0b1ee494994490febdb1fc157` and
+`0cc43dfc41094935a7dd024058f32ce1`). The final model differs in data and epochs too, so only none
+vs strong isolates the effect of augmentation.
+
+| Model | Clean | Mean over the 21 distorted levels | Drop (points) | Worst level |
+| --- | --- | --- | --- | --- |
+| final_model | 99.0% | **73.2%** | 25.8 | noise 50 (6.0%) |
+| augment-strong | 80.6% | 62.2% | **18.5** | noise 50 (13.0%) |
+| augment-none | 91.4% | 54.4% | 37.1 | noise 50 (5.5%) |
+
+Test accuracy at every level (best model per row in bold; random guessing is 2.6%). Strengths:
+blur radius in pixels, noise standard deviation on the 0-255 scale, share of light kept (dark),
+brightness factor (bright), degrees (rotation), JPEG quality out of 100, share of the width and
+height kept (zoom).
+
+| Distortion | Strength | final_model | augment-none | augment-strong |
+| --- | --- | --- | --- | --- |
+| clean | - | **99.0%** | 91.4% | 80.6% |
+| blur | 1 | **95.9%** | 76.1% | 82.8% |
+| blur | 2 | 72.6% | 54.9% | **82.9%** |
+| blur | 4 | 41.0% | 37.6% | **71.2%** |
+| noise | 10 | **97.8%** | 89.0% | 77.1% |
+| noise | 25 | 42.7% | **49.2%** | 47.7% |
+| noise | 50 | 6.0% | 5.5% | **13.0%** |
+| dark | 0.7 | **98.5%** | 41.7% | 75.1% |
+| dark | 0.5 | **84.2%** | 18.4% | 55.0% |
+| dark | 0.3 | **32.7%** | 13.0% | 17.4% |
+| bright | 1.3 | **98.7%** | 65.9% | 79.4% |
+| bright | 1.6 | **95.9%** | 38.5% | 72.1% |
+| bright | 2 | **79.3%** | 18.7% | 52.3% |
+| rotation | 30 | **98.2%** | 88.5% | 79.8% |
+| rotation | 60 | **96.1%** | 85.8% | 78.8% |
+| rotation | 90 | **96.5%** | 87.1% | 78.0% |
+| jpeg | 30 | **98.7%** | 90.5% | 77.1% |
+| jpeg | 15 | **91.3%** | 83.8% | 69.8% |
+| jpeg | 5 | 24.5% | **35.0%** | 28.0% |
+| zoom | 0.8 | **95.9%** | 82.7% | 77.8% |
+| zoom | 0.6 | **64.7%** | 51.1% | 55.5% |
+| zoom | 0.4 | 26.3% | 28.5% | **34.3%** |
+
+- **Rotation does no harm.** The final model keeps 96-98% at 30-90 degrees although it was trained
+  with rotations of 15 degrees at most, and the model trained without any augmentation loses at
+  most 6 points. Leaves have no fixed "up", so the models never relied on orientation.
+- **Noise is the main weakness of all three models.** At noise 25 they fall to 43-49%, at noise 50 to
+  near random guessing. No model was trained with noise, so adding Gaussian noise to the training
+  augmentation is the clearest next step.
+- **Strong augmentation protects against what it trains on.** With blur 4 it keeps 71.2%, against
+  41.0% for the 99% model and 37.6% without augmentation, although its clean accuracy is 18 points
+  lower. It is also best at zoom 0.4 (34.3%) and noise 50 (13.0%). Strong augmentation includes
+  random blur and random crops.
+- **Without augmentation the model depends on lighting.** 30% less light takes it from 91.4% to
+  41.7%, and doubling the brightness to 18.7%; with strong augmentation the same changes give 75.1%
+  and 52.3%. This supports the data card: mean brightness differs by class (91 to 148), so a model
+  trained without colour changes can use lighting as a shortcut.
+- **The 99% model is the most robust on average (73.2%) but still loses 26 points**, and heavy JPEG
+  compression (quality 5), zoom 0.4 and dark 0.3 take it below 33%.
+- **Consistent with the field test (PlantDoc, further down):** strong augmentation also does better on real
+  field photos (10.2% vs 6.4%). Field photos combine several of these changes at once, which may help
+  explain the drop from 99% to 14%. Training the final model with strong augmentation plus noise,
+  for more epochs, is the natural follow-up.
+- A first run on a fixed sample of 500 test images gave the same picture within about 2 points.
+
 ## 9 Nov 2026: leak check (Sara)
 
 `python -m src.leak_check --checkpoint outputs/final_model.pt` on the final 99% model
