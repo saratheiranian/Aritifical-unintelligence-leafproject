@@ -141,7 +141,7 @@ confusion matrix.
 ```bash
 python -m src.make_app_assets                                    # example gallery + class examples
 python app/app.py --checkpoint outputs/best_model.pt             # local app at http://127.0.0.1:7860
-huggingface-cli login                                            # token with write access
+hf auth login                                           # token with write access
 python -m src.publish_model --repo-id <hf-user>/plant-disease-cnn --checkpoint outputs/best_model.pt
 python -m src.deploy_space --space-id <hf-user>/plant-disease-classifier --hf-model-repo <hf-user>/plant-disease-cnn
 ```
