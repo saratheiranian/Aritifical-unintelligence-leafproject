@@ -174,3 +174,22 @@ the 99% model on the PlantDoc test split (Singh et al., 2020, CC BY 4.0), real f
 Strong augmentation costs 11 points on lab photos but gains 4 points on field photos, which suggests it
 reduces reliance on the PlantVillage setting. With 236 field images the gap is about 9 photos, so it is
 suggestive, not conclusive. Worth trying strong augmentation with more epochs for the final model.
+
+## 12 Nov 2026: fine-tuning on field photos (PlantDoc train)
+
+`python -m src.finetune_field --checkpoint outputs/final_model.pt --plantdoc-dir data/PlantDoc`:
+10 epochs, lr 1e-4, strong augmentation, on 1,972 PlantDoc train photos (349 kept for validation,
+15 dropped as look-alikes of test photos) mixed with 1,170 PlantVillage photos (30 per class).
+
+| Metric | Before | After |
+|---|---|---|
+| Field accuracy (PlantDoc test, 236 photos) | 14.4% | 22.9% |
+| Field accuracy, shared classes | 17.8% | 23.3% |
+| Field top-5 accuracy | 40.7% | 59.8% |
+| Field macro F1 | 0.128 | 0.216 |
+| Lab accuracy (PlantVillage test) | 99.0% | 85.7% |
+
+- A little real field data lifts field accuracy by 8.5 points and top-5 by 19 points.
+- The price is 13 points of lab accuracy: one small CNN cannot serve both settings well.
+- Field validation accuracy was still rising at epoch 10, so more epochs or more field data would help.
+- The deployed model stays the 99% lab model; the app warns it is for lab-style photos.
