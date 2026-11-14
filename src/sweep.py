@@ -98,8 +98,12 @@ def close_wandb_run():
         import wandb
     except ImportError:
         return
-    if wandb.run is not None:
+    if wandb.run is None:
+        return
+    try:
         wandb.finish(exit_code=1)
+    except Exception as err:  # noqa: BLE001 - a broken W&B connection must not end the sweep
+        print(f"!!! could not close the W&B run: {err!r}")
 
 
 def main(argv=None):
@@ -110,9 +114,12 @@ def main(argv=None):
     p.add_argument("--local", action="store_true")
     p.add_argument("--subset", type=float, default=None, help="override the training subset")
     p.add_argument("--epochs", type=int, default=None, help="override the number of epochs")
+    p.add_argument("--num-workers", type=int, default=None,
+                   help="data loading processes per run; 0 uses the least memory")
     args = p.parse_args(argv)
 
-    shared = {k: v for k, v in {"subset": args.subset, "epochs": args.epochs}.items() if v is not None}
+    options = {"subset": args.subset, "epochs": args.epochs, "num_workers": args.num_workers}
+    shared = {k: v for k, v in options.items() if v is not None}
     if args.local:
         run_local(args.only, shared)
     elif args.base_task_id and args.queue:
