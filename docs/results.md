@@ -69,9 +69,9 @@ python -m src.robustness --checkpoint outputs/final_model.pt outputs/cnn_augment
 All 8,318 test images, 7 distortions at 3 strengths each (22 levels including clean). Each batch
 is distorted once and given to all three models, so they see identical images; the noise is seeded,
 so the run is repeatable. Distortions are applied to the original image before the usual resize to
-128x128, as they would be in a phone photo. Not logged to ClearML yet (no workspace access); re-run
-without `--no-clearml` for a task ID. Figures (not committed): `outputs/robustness/robustness_accuracy.png`
-and `outputs/robustness/distortions_preview.png`.
+128x128, as they would be in a phone photo. Not logged at the time (no ClearML access); the team now
+uses Weights & Biases, and running without `--no-wandb` logs the results there. Figures (not
+committed): `outputs/robustness/robustness_accuracy.png` and `outputs/robustness/distortions_preview.png`.
 
 Models: `final_model` is the 99% model (all training data, 20 epochs, basic augmentation, task
 `1bee769f0c32413e8b0ad57fdcc7d626`); `augment-none` and `augment-strong` are the 4 Nov subset models
@@ -79,16 +79,25 @@ Models: `final_model` is the 99% model (all training data, 20 epochs, basic augm
 `0cc43dfc41094935a7dd024058f32ce1`). The final model differs in data and epochs too, so only none
 vs strong isolates the effect of augmentation.
 
-| Model | Clean | Mean over the 21 distorted levels | Drop (points) | Worst level |
-| --- | --- | --- | --- | --- |
-| final_model | 99.0% | **73.2%** | 25.8 | noise 50 (6.0%) |
-| augment-strong | 80.6% | 62.2% | **18.5** | noise 50 (13.0%) |
-| augment-none | 91.4% | 54.4% | 37.1 | noise 50 (5.5%) |
+| Model | Clean | Mean over the 21 distorted levels | Drop (points) | Share of clean accuracy kept | Worst level |
+| --- | --- | --- | --- | --- | --- |
+| final_model | 99.0% | **73.2%** | 25.8 | 74% | noise 50 (6.0%) |
+| augment-strong | 80.6% | 62.2% | 18.5 | 77% | noise 50 (13.0%) |
+| augment-none | 91.4% | 54.4% | 37.1 | 60% | noise 50 (5.5%) |
 
-Test accuracy at every level (best model per row in bold; random guessing is 2.6%). Strengths:
-blur radius in pixels, noise standard deviation on the 0-255 scale, share of light kept (dark),
-brightness factor (bright), degrees (rotation), JPEG quality out of 100, share of the width and
-height kept (zoom).
+The drop in points partly reflects where each model starts: augment-strong has the lowest clean
+accuracy, so it has the least room to fall. The share of clean accuracy kept (mean on distorted
+images divided by clean accuracy) corrects for that. Strong augmentation still keeps the most (77%,
+against 74% for the final model and 60% without augmentation), but its lead over the final model is
+only about 3 points from one training run each, so it is not a clear win. The clear gap is between
+augmentation (strong or basic) and none.
+
+Test accuracy at every level (random guessing is 2.6%). The best model in a row is in bold only
+where it leads the runner-up by at least 5 points: each model was trained once, so smaller gaps may
+come from the training run rather than the model (noise 25 has no clear winner). The table is
+written by `src.robustness` to `outputs/robustness/robustness_table.md`. Strengths: blur radius in
+pixels, noise standard deviation on the 0-255 scale, share of light kept (dark), brightness factor
+(bright), degrees (rotation), JPEG quality out of 100, share of the width and height kept (zoom).
 
 | Distortion | Strength | final_model | augment-none | augment-strong |
 | --- | --- | --- | --- | --- |
@@ -97,7 +106,7 @@ height kept (zoom).
 | blur | 2 | 72.6% | 54.9% | **82.9%** |
 | blur | 4 | 41.0% | 37.6% | **71.2%** |
 | noise | 10 | **97.8%** | 89.0% | 77.1% |
-| noise | 25 | 42.7% | **49.2%** | 47.7% |
+| noise | 25 | 42.7% | 49.2% | 47.7% |
 | noise | 50 | 6.0% | 5.5% | **13.0%** |
 | dark | 0.7 | **98.5%** | 41.7% | 75.1% |
 | dark | 0.5 | **84.2%** | 18.4% | 55.0% |
@@ -118,9 +127,9 @@ height kept (zoom).
 - **Rotation does no harm.** The final model keeps 96-98% at 30-90 degrees although it was trained
   with rotations of 15 degrees at most, and the model trained without any augmentation loses at
   most 6 points. Leaves have no fixed "up", so the models never relied on orientation.
-- **Noise is the main weakness of all three models.** At noise 25 they fall to 43-49%, at noise 50 to
-  near random guessing. No model was trained with noise, so adding Gaussian noise to the training
-  augmentation is the clearest next step.
+- **Noise is the main weakness of all three models.** At noise 25 they fall to 43-49% with no clear
+  winner, at noise 50 to near random guessing. No model was trained with noise, so adding Gaussian
+  noise to the training augmentation is the clearest next step.
 - **Strong augmentation protects against what it trains on.** With blur 4 it keeps 71.2%, against
   41.0% for the 99% model and 37.6% without augmentation, although its clean accuracy is 18 points
   lower. It is also best at zoom 0.4 (34.3%) and noise 50 (13.0%). Strong augmentation includes
@@ -131,10 +140,10 @@ height kept (zoom).
   trained without colour changes can use lighting as a shortcut.
 - **The 99% model is the most robust on average (73.2%) but still loses 26 points**, and heavy JPEG
   compression (quality 5), zoom 0.4 and dark 0.3 take it below 33%.
-- **Consistent with the field test (PlantDoc, further down):** strong augmentation also does better on real
-  field photos (10.2% vs 6.4%). Field photos combine several of these changes at once, which may help
-  explain the drop from 99% to 14%. Training the final model with strong augmentation plus noise,
-  for more epochs, is the natural follow-up.
+- **Consistent with the field test (PlantDoc, further down):** strong augmentation also does better
+  on real field photos (10.2% vs 6.4%). Field photos combine several of these changes at once, which
+  may help explain the drop from 99% to 14%. Training the final model with strong augmentation plus
+  noise, for more epochs, is the natural follow-up.
 - A first run on a fixed sample of 500 test images gave the same picture within about 2 points.
 
 ## 9 Nov 2026: leak check (Sara)

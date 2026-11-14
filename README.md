@@ -52,6 +52,7 @@ per-epoch numbers are in [docs/results.md](docs/results.md).
 | `src/models.py` | `PlantCNN` (from scratch) and the ResNet18 baseline |
 | `src/train.py`, `src/evaluate.py` | Training with early stopping, test-set evaluation |
 | `src/robustness.py` | Accuracy on distorted test images (blur, noise, lighting, rotation, JPEG, zoom) |
+| `src/distortions.py` | The 7 image distortions used by the robustness test |
 | `src/split_data.py`, `src/eda.py`, `src/data_quality.py`, `src/register_dataset.py` | Split check, EDA plots, image quality and duplicate checks, ClearML dataset versioning |
 | `src/sweep.py`, `src/compare_runs.py` | Hyperparameter experiments and the results table |
 | `src/inference.py`, `app/app.py` | Prediction helper and the Gradio app |
@@ -140,7 +141,8 @@ python -m src.robustness --checkpoint outputs/final_model.pt outputs/cnn_augment
 and a confusion matrix. `robustness` measures accuracy on test images with 7 distortions (blur,
 noise, dark, bright, rotation, JPEG, zoom) at 3 strengths, for one or more models, and saves a
 results table, a summary and a chart to `outputs/robustness/` (`--sample 500` for a quick run,
-`--preview` for the distortion figure only).
+`--preview` for the distortion figure only). It also logs them to the team's Weights & Biases
+project (`src/config.py`); add `--no-wandb` to skip that.
 
 ### 5. App and deployment
 

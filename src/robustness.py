@@ -5,18 +5,19 @@ taken in a field are often blurry, dark, noisy, tilted, zoomed in or heavily com
 script applies one distortion at a time, at three strengths, to the test images only (never to
 training images) and measures how each model copes.
 
-    python -m src.robustness --preview --no-clearml          # figure of every distortion only
-    python -m src.robustness --checkpoint outputs/final_model.pt --sample 500 --no-clearml
+    python -m src.robustness --preview --no-wandb            # figure of every distortion only
+    python -m src.robustness --checkpoint outputs/final_model.pt --sample 500 --no-wandb
     python -m src.robustness --checkpoint outputs/final_model.pt outputs/cnn_augment-none.pt \
         outputs/cnn_augment-strong.pt
 
 Every model sees exactly the same distorted images (the noise is seeded), so the comparison is
 fair. Outputs go to outputs/robustness/: robustness_results.csv (every model, distortion and
-strength), robustness_summary.csv (one row per model) and robustness_accuracy.png.
+strength), robustness_summary.csv (one row per model), robustness_table.md (accuracy at every
+level, ready for docs/results.md) and robustness_accuracy.png. Without --no-wandb the results,
+summary and charts are also logged to the team's Weights & Biases project (src/config.py).
 """
 
 import argparse
-import io
 import os
 from pathlib import Path
 
@@ -27,93 +28,20 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
-from PIL import Image, ImageEnhance, ImageFilter
 from sklearn.metrics import f1_score
 
+from src.config import WANDB_ENTITY, WANDB_PROJECT
 from src.data import SEED, load_full_dataset, split_dataset
+from src.distortions import DISTORTIONS, apply_distortion
 from src.evaluate import load_checkpoint
 from src.models import get_device
-from src.train import CLEARML_PROJECT
 from src.transforms import get_transforms
 
 OUTPUT_DIR = os.path.join("outputs", "robustness")
 
-
-# ---------------------------------------------------------------------------------------------
-# Distortions. Each one takes a PIL image and a strength, and returns a new PIL image of the
-# same size. Real-life problem each one imitates is in its docstring.
-# ---------------------------------------------------------------------------------------------
-
-
-def gaussian_blur(image, sigma):
-    """Out-of-focus or shaky photo. sigma = blur radius in pixels."""
-    return image.filter(ImageFilter.GaussianBlur(radius=sigma))
-
-
-def gaussian_noise(image, std, seed=SEED):
-    """Grainy photo taken in low light. std = noise strength on the 0-255 pixel scale."""
-    rng = np.random.default_rng(seed)
-    pixels = np.asarray(image, dtype=np.float32)
-    noisy = pixels + rng.normal(0.0, std, size=pixels.shape)
-    return Image.fromarray(np.clip(noisy, 0, 255).astype(np.uint8))
-
-
-def brightness(image, factor):
-    """Shade (factor below 1) or strong sunlight (factor above 1). 1 = unchanged."""
-    return ImageEnhance.Brightness(image).enhance(factor)
-
-
-def border_colour(image):
-    """Average colour of the image's outer edge (its background)."""
-    pixels = np.asarray(image)
-    edges = np.concatenate([pixels[0], pixels[-1], pixels[:, 0], pixels[:, -1]])
-    return tuple(int(v) for v in edges.mean(axis=0))
-
-
-def rotation(image, degrees):
-    """Photo taken at an angle. The empty corners are filled with the background colour rather
-    than black, so the model cannot use black corners as a clue."""
-    return image.rotate(degrees, resample=Image.Resampling.BILINEAR, fillcolor=border_colour(image))
-
-
-def jpeg_compression(image, quality):
-    """Photo sent through a messaging app. quality 100 = best, 1 = worst."""
-    buffer = io.BytesIO()
-    image.save(buffer, format="JPEG", quality=quality)
-    buffer.seek(0)
-    return Image.open(buffer).convert("RGB")
-
-
-def zoom(image, keep):
-    """Close-up showing only the middle of the leaf. keep = share of the width and height kept."""
-    width, height = image.size
-    w, h = int(width * keep), int(height * keep)
-    left, top = (width - w) // 2, (height - h) // 2
-    return image.crop((left, top, left + w, top + h)).resize(
-        (width, height), Image.Resampling.BILINEAR
-    )
-
-
-# name: (function, three strengths from mild to severe)
-DISTORTIONS = {
-    "blur": (gaussian_blur, [1, 2, 4]),
-    "noise": (gaussian_noise, [10, 25, 50]),
-    "dark": (brightness, [0.7, 0.5, 0.3]),
-    "bright": (brightness, [1.3, 1.6, 2.0]),
-    "rotation": (rotation, [30, 60, 90]),
-    "jpeg": (jpeg_compression, [30, 15, 5]),
-    "zoom": (zoom, [0.8, 0.6, 0.4]),
-}
-
-
-def apply_distortion(image, name, strength, seed=SEED):
-    """Apply one distortion by name. The name "clean" returns the image unchanged."""
-    if name == "clean":
-        return image
-    function, _ = DISTORTIONS[name]
-    if function is gaussian_noise:
-        return function(image, strength, seed=seed)
-    return function(image, strength)
+# Each model was trained once, so small gaps between models may be down to the training run
+# rather than the model. The results table only marks a winner that leads by at least this much.
+MIN_GAP = 0.05
 
 
 def save_preview(image, path):
@@ -124,7 +52,7 @@ def save_preview(image, path):
         axes[row, 0].set_title("clean", fontsize=8)
         axes[row, 0].set_ylabel(name)
         for col, strength in enumerate(strengths, start=1):
-            axes[row, col].imshow(apply_distortion(image, name, strength))
+            axes[row, col].imshow(apply_distortion(image, name, strength, seed=SEED))
             axes[row, col].set_title(f"{name} {strength}", fontsize=8)
     for ax in axes.flat:
         ax.set_xticks([])
@@ -219,7 +147,11 @@ def evaluate_distortions(models, test, image_col, label_col, num_classes, indice
 
 
 def summarise(results):
-    """One row per model: clean accuracy, mean accuracy over all distortions, and the drop."""
+    """One row per model: clean accuracy, mean accuracy over all distortions, and the drop.
+
+    "kept" is the share of clean accuracy kept on distorted images (mean / clean). It is fairer
+    than "drop" when models start from different clean accuracies: a model that starts lower
+    has less room to fall, so a small drop alone can flatter it."""
     clean = results[results["distortion"] == "clean"].set_index("model")["accuracy"]
     distorted = results[results["distortion"] != "clean"].groupby("model")["accuracy"]
     summary = pd.DataFrame({
@@ -228,6 +160,7 @@ def summarise(results):
         "worst_accuracy": distorted.min(),
     })
     summary["drop"] = summary["clean_accuracy"] - summary["mean_distorted_accuracy"]
+    summary["kept"] = summary["mean_distorted_accuracy"] / summary["clean_accuracy"]
     distorted_rows = results[results["distortion"] != "clean"]
     worst = distorted_rows.loc[distorted_rows.groupby("model")["accuracy"].idxmin()]
     summary["worst_case"] = pd.Series(
@@ -237,11 +170,41 @@ def summarise(results):
     return summary.sort_values("mean_distorted_accuracy", ascending=False)
 
 
+def markdown_table(results, min_gap=MIN_GAP):
+    """Accuracy of every model at every level as a Markdown table, for docs/results.md.
+
+    The best model in a row is in bold only if it leads the runner-up by at least min_gap
+    (5 points by default). With one training run per model, smaller gaps may be noise."""
+    model_names = list(results["model"].unique())
+    lines = [
+        "| Distortion | Strength | " + " | ".join(model_names) + " |",
+        "| --- | --- |" + " --- |" * len(model_names),
+    ]
+    for name, strength in all_levels():
+        if name == "clean":
+            level = results[results["distortion"] == "clean"]
+        else:
+            level = results[(results["distortion"] == name) & (results["strength"] == strength)]
+        if level.empty:
+            continue
+        accuracy = level.set_index("model")["accuracy"]
+        ranked = accuracy.sort_values(ascending=False)
+        clear_winner = len(ranked) > 1 and ranked.iloc[0] - ranked.iloc[1] >= min_gap - 1e-9
+        cells = []
+        for model_name in model_names:
+            cell = f"{accuracy[model_name]:.1%}"
+            if clear_winner and model_name == ranked.index[0]:
+                cell = f"**{cell}**"
+            cells.append(cell)
+        lines.append(f"| {name} | {strength_label(strength) or '-'} | " + " | ".join(cells) + " |")
+    return "\n".join(lines) + "\n"
+
+
 def plot_results(results, path, num_classes=39):
     """One small chart per distortion: accuracy against strength, one line per model.
 
     The dashed line is the accuracy of random guessing (1 in 39), where a model has stopped
-    working altogether."""
+    working altogether. Saves the chart, closes the figure and returns the file path."""
     names = list(DISTORTIONS)
     clean = results[results["distortion"] == "clean"].set_index("model")["accuracy"]
     fig, axes = plt.subplots(2, 4, figsize=(14, 6.5), sharey=True)
@@ -268,7 +231,8 @@ def plot_results(results, path, num_classes=39):
     fig.tight_layout()
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     fig.savefig(path, dpi=150)
-    return fig
+    plt.close(fig)
+    return path
 
 
 def main(argv=None):
@@ -280,17 +244,18 @@ def main(argv=None):
     p.add_argument("--batch-size", type=int, default=64)
     p.add_argument("--preview", action="store_true", help="only save the distortion figure")
     p.add_argument("--preview-index", type=int, default=0, help="which test image to show")
-    p.add_argument("--task-name", default="robustness")
+    p.add_argument("--run-name", default="robustness", help="name of the WandB run")
     p.add_argument("--output-dir", default=OUTPUT_DIR)
-    p.add_argument("--no-clearml", action="store_true")
+    p.add_argument("--no-wandb", action="store_true", help="do not log to Weights & Biases")
     args = p.parse_args(argv)
 
-    task = None
-    if not args.no_clearml:
-        from clearml import Task
+    run = None
+    if not args.no_wandb:
+        import wandb
 
-        task = Task.init(project_name=CLEARML_PROJECT, task_name=args.task_name,
-                         tags=["eval", "robustness"])
+        run = wandb.init(entity=WANDB_ENTITY, project=WANDB_PROJECT, name=args.run_name,
+                         job_type="eval", tags=["eval", "robustness"], config=vars(args))
+        print(f"WandB run ID: {run.id}")
 
     test, image_col, label_col, class_names = load_test_split()
     row = test[args.preview_index]
@@ -312,18 +277,24 @@ def main(argv=None):
 
     results.to_csv(os.path.join(args.output_dir, "robustness_results.csv"), index=False)
     summary.to_csv(os.path.join(args.output_dir, "robustness_summary.csv"))
-    fig = plot_results(results, os.path.join(args.output_dir, "robustness_accuracy.png"),
-                       num_classes=len(class_names))
+    with open(os.path.join(args.output_dir, "robustness_table.md"), "w") as f:
+        f.write(markdown_table(results))
+    chart = plot_results(results, os.path.join(args.output_dir, "robustness_accuracy.png"),
+                         num_classes=len(class_names))
     print(f"Saved results, summary and chart to {args.output_dir}")
 
-    if task:
-        logger = task.get_logger()
-        logger.report_table("Robustness results", "test", iteration=0, table_plot=results)
-        logger.report_table("Robustness summary", "test", iteration=0, table_plot=summary)
-        logger.report_matplotlib_figure("Accuracy on distorted images", "test", figure=fig,
-                                        iteration=0)
-        logger.report_image("Distortions", "preview", iteration=0, local_path=preview)
-    plt.close(fig)
+    if run:
+        run.log({
+            "robustness/results": wandb.Table(dataframe=results),
+            "robustness/summary": wandb.Table(dataframe=summary.reset_index()),
+            "robustness/accuracy_chart": wandb.Image(chart),
+            "robustness/distortions_preview": wandb.Image(preview),
+        })
+        for model_name, values in summary.iterrows():
+            for column in ["clean_accuracy", "mean_distorted_accuracy", "drop", "kept"]:
+                run.summary[f"{model_name}/{column}"] = float(values[column])
+        print(f"Logged to WandB run {run.id}: {run.url}")
+        run.finish()
     return results
 
 
