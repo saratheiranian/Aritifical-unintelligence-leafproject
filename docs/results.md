@@ -69,8 +69,8 @@ python -m src.robustness --checkpoint outputs/final_model.pt outputs/cnn_augment
 All 8,318 test images, 7 distortions at 3 strengths each (22 levels including clean). Each batch
 is distorted once and given to all three models, so they see identical images; the noise is seeded,
 so the run is repeatable. Distortions are applied to the original image before the usual resize to
-128x128, as they would be in a phone photo. Not logged at the time (no ClearML access); the team now
-uses Weights & Biases, and running without `--no-wandb` logs the results there. Figures (not
+128x128, as they would be in a phone photo. Re-run on 14 Nov with Weights & Biases logging (run `rtdvfvn3`, project
+Aritifical-unintelligence-leafproject): every number was identical, so the test is fully repeatable. Figures (not
 committed): `outputs/robustness/robustness_accuracy.png` and `outputs/robustness/distortions_preview.png`.
 
 Models: `final_model` is the 99% model (all training data, 20 epochs, basic augmentation, task
@@ -83,12 +83,12 @@ vs strong isolates the effect of augmentation.
 | --- | --- | --- | --- | --- | --- |
 | final_model | 99.0% | **73.2%** | 25.8 | 74% | noise 50 (6.0%) |
 | augment-strong | 80.6% | 62.2% | 18.5 | 77% | noise 50 (13.0%) |
-| augment-none | 91.4% | 54.4% | 37.1 | 60% | noise 50 (5.5%) |
+| augment-none | 91.4% | 54.4% | 37.1 | 59% | noise 50 (5.5%) |
 
 The drop in points partly reflects where each model starts: augment-strong has the lowest clean
 accuracy, so it has the least room to fall. The share of clean accuracy kept (mean on distorted
 images divided by clean accuracy) corrects for that. Strong augmentation still keeps the most (77%,
-against 74% for the final model and 60% without augmentation), but its lead over the final model is
+against 74% for the final model and 59% without augmentation), but its lead over the final model is
 only about 3 points from one training run each, so it is not a clear win. The clear gap is between
 augmentation (strong or basic) and none.
 
