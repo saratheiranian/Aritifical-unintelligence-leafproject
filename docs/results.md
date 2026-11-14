@@ -4,6 +4,61 @@ Running record of experiments, for the report's data, evaluation and project-man
 sections. Newest first. Runs below were tracked on app.clear.ml (project `PlantDisease`)
 while the KCL ClearML server was down.
 
+## 12 Nov 2026: fine-tuning on field photos (PlantDoc train)
+
+`python -m src.finetune_field --checkpoint outputs/final_model.pt --plantdoc-dir data/PlantDoc`:
+10 epochs, lr 1e-4, strong augmentation, on 1,972 PlantDoc train photos (349 kept for validation,
+15 dropped as look-alikes of test photos) mixed with 1,170 PlantVillage photos (30 per class).
+
+| Metric | Before | After |
+|---|---|---|
+| Field accuracy (PlantDoc test, 236 photos) | 14.4% | 22.9% |
+| Field accuracy, shared classes | 17.8% | 23.3% |
+| Field top-5 accuracy | 40.7% | 59.8% |
+| Field macro F1 | 0.128 | 0.216 |
+| Lab accuracy (PlantVillage test) | 99.0% | 85.7% |
+
+- A little real field data lifts field accuracy by 8.5 points and top-5 by 19 points.
+- The price is 13 points of lab accuracy: one small CNN cannot serve both settings well.
+- Field validation accuracy was still rising at epoch 10, so more epochs or more field data would help.
+- The deployed model stays the 99% lab model; the app warns it is for lab-style photos.
+
+## 10 Nov 2026: field-photo test (PlantDoc)
+
+`python -m src.field_test --checkpoint outputs/final_model.pt --plantdoc-dir data/PlantDoc/test`:
+the 99% model on the PlantDoc test split (Singh et al., 2020, CC BY 4.0), real field photos of the
+27 classes PlantDoc shares with PlantVillage.
+
+| Test set | Images | Classes | Accuracy | Top-5 | Macro F1 |
+|---|---|---|---|---|---|
+| PlantVillage test (lab photos) | 8,318 | 39 | 99.0% | | |
+| PlantDoc, model picks from all 39 classes | 236 | 27 | 14.4% | 40.7% | 0.128 |
+| PlantDoc, prediction limited to the 27 shared classes | 236 | 27 | 17.8% | | |
+
+- Accuracy falls from 99% to 14% on field photos (chance is 2.6%). The model has learnt the
+  PlantVillage setting (one leaf, plain background, even lighting) as much as the disease itself.
+- Limiting predictions to the shared classes only adds 3 points, so the errors are not just
+  confusion with classes missing from PlantDoc.
+- Best field classes: Corn common rust (F1 0.44), Squash powdery mildew (0.43), Tomato late
+  blight (0.37), Potato early blight (0.35): large, distinctive lesions.
+- 13 of 27 classes score F1 0, including all healthy Tomato, Cherry, Peach, Soybean and Strawberry
+  leaves and most Tomato diseases.
+- Consequence: the app must warn users that it is trained on lab photos of single leaves and is not
+  reliable on field photos. Fine-tuning on field images (e.g. PlantDoc train) is future work.
+
+### Augmentation on field photos (10 Nov)
+
+`python -m src.field_test --checkpoint outputs/shared_models/cnn_augment-<level>.pt` (4 Nov checkpoints, 25% subset, 10 epochs).
+
+| Augmentation | PlantVillage test | PlantDoc field test | Field top-5 | Field macro F1 |
+|---|---|---|---|---|
+| none | 91.4% | 6.4% | 31.4% | 0.062 |
+| strong | 80.6% | 10.2% | 39.4% | 0.093 |
+
+Strong augmentation costs 11 points on lab photos but gains 4 points on field photos, which suggests it
+reduces reliance on the PlantVillage setting. With 236 field images the gap is about 9 photos, so it is
+suggestive, not conclusive. Worth trying strong augmentation with more epochs for the final model.
+
 ## 10 Nov 2026: robustness test on distorted test images (Maryam, MacBook, Apple GPU)
 
 ```bash
@@ -217,58 +272,3 @@ for 20 epochs, and the cosine learning-rate schedule. The sweep should separate 
   then `src/compare_runs.py` for the results table.
 - ResNet18 transfer-learning baseline.
 - Deploy to a Hugging Face Space and record the link in the README.
-
-## 10 Nov 2026: field-photo test (PlantDoc)
-
-`python -m src.field_test --checkpoint outputs/final_model.pt --plantdoc-dir data/PlantDoc/test`:
-the 99% model on the PlantDoc test split (Singh et al., 2020, CC BY 4.0), real field photos of the
-27 classes PlantDoc shares with PlantVillage.
-
-| Test set | Images | Classes | Accuracy | Top-5 | Macro F1 |
-|---|---|---|---|---|---|
-| PlantVillage test (lab photos) | 8,318 | 39 | 99.0% | | |
-| PlantDoc, model picks from all 39 classes | 236 | 27 | 14.4% | 40.7% | 0.128 |
-| PlantDoc, prediction limited to the 27 shared classes | 236 | 27 | 17.8% | | |
-
-- Accuracy falls from 99% to 14% on field photos (chance is 2.6%). The model has learnt the
-  PlantVillage setting (one leaf, plain background, even lighting) as much as the disease itself.
-- Limiting predictions to the shared classes only adds 3 points, so the errors are not just
-  confusion with classes missing from PlantDoc.
-- Best field classes: Corn common rust (F1 0.44), Squash powdery mildew (0.43), Tomato late
-  blight (0.37), Potato early blight (0.35): large, distinctive lesions.
-- 13 of 27 classes score F1 0, including all healthy Tomato, Cherry, Peach, Soybean and Strawberry
-  leaves and most Tomato diseases.
-- Consequence: the app must warn users that it is trained on lab photos of single leaves and is not
-  reliable on field photos. Fine-tuning on field images (e.g. PlantDoc train) is future work.
-
-### Augmentation on field photos (10 Nov)
-
-`python -m src.field_test --checkpoint outputs/shared_models/cnn_augment-<level>.pt` (4 Nov checkpoints, 25% subset, 10 epochs).
-
-| Augmentation | PlantVillage test | PlantDoc field test | Field top-5 | Field macro F1 |
-|---|---|---|---|---|
-| none | 91.4% | 6.4% | 31.4% | 0.062 |
-| strong | 80.6% | 10.2% | 39.4% | 0.093 |
-
-Strong augmentation costs 11 points on lab photos but gains 4 points on field photos, which suggests it
-reduces reliance on the PlantVillage setting. With 236 field images the gap is about 9 photos, so it is
-suggestive, not conclusive. Worth trying strong augmentation with more epochs for the final model.
-
-## 12 Nov 2026: fine-tuning on field photos (PlantDoc train)
-
-`python -m src.finetune_field --checkpoint outputs/final_model.pt --plantdoc-dir data/PlantDoc`:
-10 epochs, lr 1e-4, strong augmentation, on 1,972 PlantDoc train photos (349 kept for validation,
-15 dropped as look-alikes of test photos) mixed with 1,170 PlantVillage photos (30 per class).
-
-| Metric | Before | After |
-|---|---|---|
-| Field accuracy (PlantDoc test, 236 photos) | 14.4% | 22.9% |
-| Field accuracy, shared classes | 17.8% | 23.3% |
-| Field top-5 accuracy | 40.7% | 59.8% |
-| Field macro F1 | 0.128 | 0.216 |
-| Lab accuracy (PlantVillage test) | 99.0% | 85.7% |
-
-- A little real field data lifts field accuracy by 8.5 points and top-5 by 19 points.
-- The price is 13 points of lab accuracy: one small CNN cannot serve both settings well.
-- Field validation accuracy was still rising at epoch 10, so more epochs or more field data would help.
-- The deployed model stays the 99% lab model; the app warns it is for lab-style photos.
