@@ -83,7 +83,7 @@ def fast_train(tmp_path, monkeypatch):
     """Call train.main with fake loaders and a tiny CNN. Extra CLI args can be added per test."""
     monkeypatch.setattr("src.train.make_loaders", lambda **kwargs: (tiny_loaders(), CLASS_NAMES))
 
-    def run(*extra, clearml=False):
+    def run(*extra, tracked=False):
         argv = [
             "--base-channels", "4",
             "--depth", "2",
@@ -92,8 +92,8 @@ def fast_train(tmp_path, monkeypatch):
             "--output-dir", str(tmp_path),
             *extra,
         ]
-        if not clearml:
-            argv.insert(0, "--no-clearml")
+        if not tracked:
+            argv.insert(0, "--no-wandb")
         return train.main(argv)
 
     return run
@@ -131,15 +131,22 @@ def test_main_trains_resnet18_with_frozen_backbone(fast_train, tmp_path, monkeyp
     assert ckpt["model_kwargs"]["freeze_backbone"] is True
 
 
-def test_main_reports_to_clearml_and_can_run_remotely(fast_train, monkeypatch):
-    fake_clearml = MagicMock()
-    monkeypatch.setitem(sys.modules, "clearml", fake_clearml)
+def test_main_logs_every_epoch_to_wandb(fast_train, monkeypatch):
+    fake_wandb = MagicMock()
+    monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
 
-    fast_train("--queue", "gpu", "--epochs", "2", clearml=True)
+    fast_train("--epochs", "2", "--tags", "sweep", "baseline", tracked=True)
 
-    task = fake_clearml.Task.init.return_value
-    task.execute_remotely.assert_called_once_with(queue_name="gpu")
-    logger = task.get_logger.return_value
-    assert logger.report_scalar.call_count == 6 * 2  # six scalars per epoch, two epochs
-    assert logger.report_single_value.call_count == 4
-    task.close.assert_called_once()
+    init_kwargs = fake_wandb.init.call_args.kwargs
+    assert init_kwargs["tags"] == ["sweep", "baseline"]
+    assert init_kwargs["config"]["epochs"] == 2
+    run = fake_wandb.init.return_value
+    assert run.log.call_count == 2
+    # compare_runs.py reads these keys from the run history
+    logged = run.log.call_args.args[0]
+    assert {"val_acc", "train_acc", "epoch_time"} <= logged.keys()
+    run.finish.assert_called_once()
+
+
+def test_old_no_clearml_flag_still_turns_tracking_off():
+    assert parse_args(["--no-clearml"]).no_wandb is True
