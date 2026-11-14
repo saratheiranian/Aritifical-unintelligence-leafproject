@@ -19,8 +19,8 @@ import numpy as np
 import torch
 from torch import nn
 
-from src.data import class_weights, make_loaders
 from src.config import WANDB_ENTITY, WANDB_PROJECT
+from src.data import class_weights, make_loaders
 from src.models import build_model, count_parameters, get_device
 
 # still imported by the evaluation and data scripts, which have not moved to W&B yet
