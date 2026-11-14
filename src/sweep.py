@@ -84,7 +84,7 @@ def run_local(names, shared):
         # one crashed variant should not lose the rest of an overnight sweep
         try:
             train.main(argv)
-        except Exception as err:
+        except Exception as err:  # noqa: BLE001 - any crash should skip just this variant
             print(f"!!! {name} failed: {err!r}")
             failed.append(name)
             close_wandb_run()
