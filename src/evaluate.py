@@ -1,10 +1,10 @@
 """Evaluate a trained checkpoint on the held-out test split.
 
 Reports accuracy, top-5 accuracy, per-class precision/recall/F1 and a confusion matrix,
-and logs them to ClearML.
+and logs them to the team's Weights & Biases project (src/config.py).
 
     python -m src.evaluate --checkpoint outputs/best_model.pt
-    python -m src.evaluate --clearml-model-id <model id> --queue <gpu-queue-name>
+    python -m src.evaluate --checkpoint outputs/best_model.pt --no-wandb   # nothing logged online
 """
 
 import argparse
@@ -19,9 +19,9 @@ import pandas as pd
 import torch
 from sklearn.metrics import classification_report, confusion_matrix
 
+from src.config import WANDB_ENTITY, WANDB_PROJECT
 from src.data import make_loaders
 from src.models import build_model, get_device
-from src.train import CLEARML_PROJECT
 
 
 def load_checkpoint(path, device="cpu"):
@@ -63,31 +63,26 @@ def plot_confusion_matrix(cm, class_names, path):
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--checkpoint", default="outputs/best_model.pt")
-    p.add_argument("--clearml-model-id", default=None, help="evaluate a model stored in ClearML")
-    p.add_argument("--task-name", default="evaluate")
-    p.add_argument("--queue", default=None, help="ClearML queue for remote execution")
+    p.add_argument("--run-name", "--task-name", dest="run_name", default="evaluate",
+                   help="name of the W&B run")
     p.add_argument("--batch-size", type=int, default=128)
     p.add_argument("--num-workers", type=int, default=2)
     p.add_argument("--output-dir", default="outputs")
-    p.add_argument("--no-clearml", action="store_true")
+    p.add_argument("--no-wandb", action="store_true", help="do not log to Weights & Biases")
+    # old name, kept so existing commands still work
+    p.add_argument("--no-clearml", dest="no_wandb", action="store_true", help=argparse.SUPPRESS)
     args = p.parse_args(argv)
 
-    task = None
-    if not args.no_clearml:
-        from clearml import Task
+    run = None
+    if not args.no_wandb:
+        import wandb
 
-        task = Task.init(project_name=CLEARML_PROJECT, task_name=args.task_name, tags=["eval"])
-        if args.queue:
-            task.execute_remotely(queue_name=args.queue)
-
-    checkpoint = args.checkpoint
-    if args.clearml_model_id:
-        from clearml import InputModel
-
-        checkpoint = InputModel(model_id=args.clearml_model_id).get_local_copy()
+        run = wandb.init(entity=WANDB_ENTITY, project=WANDB_PROJECT, name=args.run_name,
+                         job_type="eval", tags=["eval", "test"], config=vars(args))
+        print(f"W&B run ID: {run.id}")
 
     device = get_device()
-    model, ckpt = load_checkpoint(checkpoint, device)
+    model, ckpt = load_checkpoint(args.checkpoint, device)
     loaders, class_names = make_loaders(
         img_size=ckpt["img_size"],
         augment=False,
@@ -113,14 +108,18 @@ def main(argv=None):
     cm = confusion_matrix(labels, preds, labels=range(len(class_names)))
     fig = plot_confusion_matrix(cm, class_names, os.path.join(args.output_dir, "confusion_matrix.png"))
 
-    if task:
-        logger = task.get_logger()
-        logger.report_single_value("test_accuracy", acc)
-        logger.report_single_value("test_top5_accuracy", top5)
-        logger.report_table("Per-class metrics", "test", iteration=0, table_plot=report_df)
-        logger.report_matplotlib_figure("Confusion matrix", "test", figure=fig, iteration=0)
+    if run:
         worst = report_df.iloc[: len(class_names)].sort_values("f1-score").head(5)
-        logger.report_table("Weakest classes", "test", iteration=0, table_plot=worst)
+        run.log({
+            "test/per_class": wandb.Table(dataframe=report_df.reset_index(names="class")),
+            "test/weakest_classes": wandb.Table(dataframe=worst.reset_index(names="class")),
+            "test/confusion_matrix": wandb.Image(fig),
+        })
+        run.summary["test_accuracy"] = acc
+        run.summary["test_top5_accuracy"] = top5
+        run.summary["test_macro_f1"] = float(report_df.loc["macro avg", "f1-score"])
+        print(f"Logged to W&B run {run.id}: {run.url}")
+        run.finish()
     return {"accuracy": acc, "top5_accuracy": top5}
 
 

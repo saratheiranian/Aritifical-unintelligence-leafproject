@@ -8,6 +8,7 @@ import torch
 from torch.utils.data import DataLoader, TensorDataset
 
 from src import evaluate
+from src.config import WANDB_ENTITY, WANDB_PROJECT
 from src.evaluate import load_checkpoint, plot_confusion_matrix, predict
 
 CLASS_NAMES = [f"Plant{i}___Disease_{i}" for i in range(39)]
@@ -58,7 +59,7 @@ def test_plot_confusion_matrix_writes_png(tmp_path):
 
 
 def test_main_writes_report_and_confusion_matrix(checkpoint, tmp_path, fake_loaders):
-    result = evaluate.main(["--checkpoint", str(checkpoint), "--no-clearml", "--output-dir", str(tmp_path)])
+    result = evaluate.main(["--checkpoint", str(checkpoint), "--no-wandb", "--output-dir", str(tmp_path)])
     assert set(result) == {"accuracy", "top5_accuracy"}
     assert 0.0 <= result["accuracy"] <= result["top5_accuracy"] <= 1.0
     assert (tmp_path / "test_report.csv").exists()
@@ -68,17 +69,26 @@ def test_main_writes_report_and_confusion_matrix(checkpoint, tmp_path, fake_load
     assert fake_loaders["augment"] is False
 
 
-def test_main_logs_to_clearml_and_can_run_remotely(checkpoint, tmp_path, fake_loaders, monkeypatch):
-    fake_clearml = MagicMock()
-    fake_clearml.InputModel.return_value.get_local_copy.return_value = str(checkpoint)
-    monkeypatch.setitem(sys.modules, "clearml", fake_clearml)
+def test_main_logs_to_wandb(checkpoint, tmp_path, fake_loaders, monkeypatch):
+    fake_wandb = MagicMock()
+    monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
 
-    evaluate.main(["--clearml-model-id", "abc123", "--queue", "gpu", "--output-dir", str(tmp_path)])
+    evaluate.main(["--checkpoint", str(checkpoint), "--output-dir", str(tmp_path)])
 
-    task = fake_clearml.Task.init.return_value
-    task.execute_remotely.assert_called_once_with(queue_name="gpu")
-    fake_clearml.InputModel.assert_called_once_with(model_id="abc123")
-    logger = task.get_logger.return_value
-    assert logger.report_single_value.call_count == 2  # accuracy, top-5 accuracy
-    assert logger.report_table.call_count == 2  # per-class metrics, weakest classes
-    assert logger.report_matplotlib_figure.call_count == 1
+    init_kwargs = fake_wandb.init.call_args.kwargs
+    assert init_kwargs["entity"] == WANDB_ENTITY
+    assert init_kwargs["project"] == WANDB_PROJECT
+    run = fake_wandb.init.return_value
+    logged = run.log.call_args.args[0]
+    assert set(logged) == {"test/per_class", "test/weakest_classes", "test/confusion_matrix"}
+    run.summary.__setitem__.assert_any_call("test_accuracy", pytest.approx(0, abs=1))
+    run.finish.assert_called_once()
+
+
+def test_old_no_clearml_flag_still_turns_logging_off(checkpoint, tmp_path, fake_loaders, monkeypatch):
+    fake_wandb = MagicMock()
+    monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
+
+    evaluate.main(["--checkpoint", str(checkpoint), "--no-clearml", "--output-dir", str(tmp_path)])
+
+    fake_wandb.init.assert_not_called()
