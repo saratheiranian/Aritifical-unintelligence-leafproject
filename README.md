@@ -131,8 +131,8 @@ Compare them in the ClearML web app too: select the tasks, then Compare.
 ### 4. Evaluate
 
 ```bash
-python -m src.evaluate --checkpoint outputs/best_model.pt
-python -m src.evaluate --clearml-model-id <model id> --queue <gpu-queue-name>
+python -m src.evaluate --checkpoint outputs/best_model.pt              # logs to W&B
+python -m src.evaluate --checkpoint outputs/best_model.pt --no-wandb   # nothing logged online
 python -m src.robustness --checkpoint outputs/final_model.pt outputs/cnn_augment-none.pt outputs/cnn_augment-strong.pt
 ```
 
