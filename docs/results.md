@@ -11,7 +11,7 @@ python -m src.gradcam --checkpoint outputs/final_model.pt outputs/cnn_augment-no
     outputs/cnn_augment-strong.pt --attention-sample 1000 --run-name maryam-gradcam
 ```
 
-W&B run: `edxj683y` (project Aritifical-unintelligence-leafproject). Grad-CAM (Selvaraju et al.,
+W&B run: `7hnz7t1s` (project Aritifical-unintelligence-leafproject). Grad-CAM (Selvaraju et al.,
 2017) shows how much each region of a photo pushed the prediction up (bright yellow = most, dark =
 hardly at all; colour-blind-friendly "inferno" map). The final model scanned all 8,318 test images
 (99.0% correct, 83 mistakes, the same accuracy as `src.evaluate`). Figures (not committed) in
@@ -20,7 +20,8 @@ the 4 most confident mistakes), mistakes (each confident mistake explained for t
 true class), models (4 random photos chosen without any model, explained by all three models) and
 distortions (a diseased and a healthy leaf at the robustness levels). Tables:
 `gradcam_mistakes.csv` (all 83 mistakes), `gradcam_confused_pairs.csv`, `gradcam_attention.csv`
-(heat on the leaf per photo and model) and `gradcam_attention_summary.csv`. The last feature maps
+(heat on the leaf per photo and model), `gradcam_attention_summary.csv` and
+`gradcam_sanity_summary.csv`. The last feature maps
 of the CNN are 8x8 for a 128x128 input, so the heatmaps show rough regions, not exact outlines.
 
 **How sure the model is when it is wrong.** Only 9 of the 83 mistakes (11%) were at least 90%
@@ -69,13 +70,19 @@ bootstrap resamples of the photos; the differences are paired (same photos, same
 | final_model | 64.4% | 63.4 to 65.4% | |
 | augment-strong | 61.4% | 60.1 to 62.8% | -3.0 (-3.9 to -2.1) |
 | augment-none | 59.0% | 57.7 to 60.3% | -5.4 (-6.1 to -4.7) |
-| final_model with random weights | 48.9% | 48.1 to 49.7% | -15.4 (-16.2 to -14.7) |
+| final_model with random weights, 5 initialisations | 37.6 to 55.6% (mean 51.2%) | | -8.7 to -26.8 |
 
-The leaf covers 49.1% of these photos on average.
+The leaf covers 49.1% of these photos on average. The trained-model numbers are reproducible: on a
+300-photo trial run, Media got exactly the same heat on the leaf for all three models on a Windows
+CPU as on the MacBook GPU.
 
-- **All three trained models look mostly at the leaf.** With random weights, 48.9% of the heat
-  lands on the leaf, almost exactly the leaf's share of the photo (49.1%), as expected from a model
-  that knows nothing about leaves. The trained final model puts 64.4% there, clearly above that.
+- **All three trained models put more heat on the leaf than any random model.** The same network
+  with random weights puts 54 to 56% of its heat on the leaf for four of the five initialisations
+  (37.6% for the fifth), a little above the leaf's share of the photo (49.1%), probably because
+  even random filters react more to the leaf's texture and contrast than to the plain background.
+  The fair baseline is therefore the random model, not the leaf's area. The trained final model
+  puts 64.4% on the leaf, 8.7 to 26.8 points more than the random models, and augment-none (59.0%)
+  and augment-strong (61.4%) are also above all five.
 - **About a third of the heat still falls outside the mask.** Part of it is the method: the 8x8
   heatmap is blurred when enlarged to 128x128, so heat on the leaf edge spills onto the background.
   Part is the mask (see the limits below), and part may be real use of the background, as in the
@@ -89,10 +96,26 @@ The leaf covers 49.1% of these photos on average.
 
 **Sanity check: does the heatmap depend on what the model learned?** Some explanation methods
 give nearly the same picture for a trained and an untrained model, because they mostly trace edges
-in the photo (Adebayo et al., 2018). Here the final model's heatmap was compared with that of the
-same network with random weights, on the same 1,000 photos (`gradcam_sanity.png` shows 4). The rank
-correlation between the two is 0.05 (95% interval 0.03 to 0.07): almost unrelated. So Grad-CAM
-passes this check: its heatmaps reflect the trained weights, not just the photo.
+in the photo (Adebayo et al., 2018). Here the final model's heatmaps were compared with those of the
+same network with random weights, on the same 1,000 photos, for 5 random initialisations (one row
+each in `gradcam_sanity_summary.csv`; `gradcam_sanity.png` shows 4 photos for the first). The
+random weights are drawn on the CPU, so every machine gets the same random models.
+
+| Random initialisation (seed) | 42 | 43 | 44 | 45 | 46 |
+| --- | --- | --- | --- | --- | --- |
+| Rank correlation with the trained heatmap | 0.31 | 0.27 | -0.21 | 0.22 | 0.23 |
+| Heat on the leaf | 54.5% | 55.6% | 37.6% | 54.1% | 54.4% |
+
+The rank correlation is 0.17 on average, from -0.21 to 0.31 (each with a 95% interval of about
++-0.02). **Grad-CAM only partly passes this check.** A correlation of 0.3 or less means most of the
+heatmap's ordering changes when the weights are random, so the heatmaps do reflect what the model
+learned. But for four of the five initialisations the two are weakly related (0.22 to 0.31): part
+of the heatmap follows the photo itself, probably the leaf's texture and contrast, as the random
+models' heat on the leaf also suggests. The heatmaps should therefore be read as a rough guide to
+where the model looks, not as proof of what it uses. An earlier version of this check used a
+single random initialisation drawn on the MacBook GPU and gave 0.05 ("almost unrelated"); in her
+review Media got 0.32 for the same seed on a CPU. The cause was that the GPU draws other random
+numbers than the CPU, and the gap showed that one draw is not enough, so the check now uses 5.
 
 **Limits of the leaf mask.** The mask uses colour only. In a visual check of 12 masks from a trial
 run on 300 photos, 8 were clean; a brightly lit patch of background and a yellowish shadow were
