@@ -1,18 +1,13 @@
-"""Train a plant disease classifier and track the run in ClearML.
+"""Train a plant disease classifier and track the run in Weights & Biases.
 
 Examples:
-    # quick prototype on 25% of the training split, logged to ClearML
+    # quick prototype on 25% of the training split, logged to W&B
     python -m src.train --subset 0.25 --epochs 10 --tags cnn subset
 
-    # same run, but executed on the KCL GPU worker (queue name from Workers & Queues)
-    python -m src.train --subset 0.25 --queue <gpu-queue-name>
+    # run without W&B (nothing is logged online)
+    python -m src.train --subset 0.05 --epochs 1 --no-wandb
 
-    # run locally without ClearML
-    python -m src.train --subset 0.05 --epochs 1 --no-clearml
-
-Remote runs: the ClearML agent clones the repository at your last pushed commit, so commit
-and push before using --queue. Batch size 64 at 128x128 (or 32 at 256x256) fits easily in the
-8 GB GPU slice.
+Log in once with `wandb login` before the first tracked run.
 """
 
 import argparse
@@ -24,10 +19,12 @@ import numpy as np
 import torch
 from torch import nn
 
+from src.config import WANDB_ENTITY, WANDB_PROJECT
 from src.data import class_weights, make_loaders
 from src.models import build_model, count_parameters, get_device
 
-CLEARML_PROJECT = "PlantDisease"  # change to the project name your ClearML guide asks for
+# still imported by the evaluation and data scripts, which have not moved to W&B yet
+CLEARML_PROJECT = "PlantDisease"
 
 
 def parse_args(argv=None):
@@ -63,8 +60,9 @@ def parse_args(argv=None):
     # tracking
     p.add_argument("--task-name", default=None)
     p.add_argument("--tags", nargs="*", default=[])
-    p.add_argument("--queue", default=None, help="ClearML queue for remote execution")
-    p.add_argument("--no-clearml", action="store_true")
+    p.add_argument("--no-wandb", action="store_true", help="do not log the run to W&B")
+    # old name, kept so existing commands still work
+    p.add_argument("--no-clearml", dest="no_wandb", action="store_true", help=argparse.SUPPRESS)
     p.add_argument("--output-dir", default="outputs")
     p.add_argument("--seed", type=int, default=42)
     return p.parse_args(argv)
@@ -163,18 +161,18 @@ def main(argv=None):
     args = parse_args(argv)
     set_seed(args.seed)
 
-    task = None
-    if not args.no_clearml:
-        from clearml import Task
+    run = None
+    if not args.no_wandb:
+        import wandb
 
-        task = Task.init(
-            project_name=CLEARML_PROJECT,
-            task_name=args.task_name or f"train-{args.arch}",
+        run = wandb.init(
+            entity=WANDB_ENTITY,
+            project=WANDB_PROJECT,
+            name=args.task_name or f"train-{args.arch}",
             tags=args.tags,
-            output_uri=True,  # upload saved checkpoints to the ClearML server
+            config=vars(args),
+            reinit=True,  # sweep.py starts several runs in one process
         )
-        if args.queue:
-            task.execute_remotely(queue_name=args.queue)  # stops here locally, reruns on the worker
 
     device = get_device()
     loaders, class_names = make_loaders(
@@ -213,7 +211,6 @@ def main(argv=None):
     os.makedirs(args.output_dir, exist_ok=True)
     best_path = os.path.join(args.output_dir, "best_model.pt")
     stopper = EarlyStopping(args.patience, args.min_delta)
-    logger = task.get_logger() if task else None
     start = time.time()
 
     for epoch in range(1, args.epochs + 1):
@@ -226,13 +223,17 @@ def main(argv=None):
             f"epoch {epoch:02d} | train loss {train_loss:.4f} acc {train_acc:.4f} "
             f"| val loss {val_loss:.4f} acc {val_acc:.4f} | lr {lr:.2e} | {epoch_time:.0f}s"
         )
-        if logger:
-            logger.report_scalar("loss", "train", value=train_loss, iteration=epoch)
-            logger.report_scalar("loss", "val", value=val_loss, iteration=epoch)
-            logger.report_scalar("accuracy", "train", value=train_acc, iteration=epoch)
-            logger.report_scalar("accuracy", "val", value=val_acc, iteration=epoch)
-            logger.report_scalar("learning rate", "lr", value=lr, iteration=epoch)
-            logger.report_scalar("epoch time (s)", "time", value=epoch_time, iteration=epoch)
+        if run:
+            # key names must match what compare_runs.py reads
+            run.log({
+                "epoch": epoch,
+                "train_loss": train_loss,
+                "val_loss": val_loss,
+                "train_acc": train_acc,
+                "val_acc": val_acc,
+                "lr": lr,
+                "epoch_time": epoch_time,
+            }, step=epoch)
 
         if stopper.step(val_acc):
             save_checkpoint(best_path, model, args, saved_kwargs, class_names, val_acc, epoch)
@@ -244,13 +245,14 @@ def main(argv=None):
 
     total_minutes = (time.time() - start) / 60
     print(f"Best val accuracy {stopper.best:.4f} in {total_minutes:.1f} min; saved {best_path}")
-    if logger:
-        logger.report_single_value("best_val_accuracy", stopper.best)
-        logger.report_single_value("epochs_run", epoch)
-        logger.report_single_value("train_minutes", total_minutes)  # for the sustainability section
-        logger.report_single_value("parameters", n_params)
-    if task:
-        task.close()  # lets sweep.py start the next run in the same process
+    if run:
+        run.summary.update({
+            "best_val_accuracy": stopper.best,
+            "epochs_run": epoch,
+            "train_minutes": total_minutes,  # for the sustainability section
+            "parameters": n_params,
+        })
+        run.finish()  # lets sweep.py start the next run in the same process
     return stopper.best
 
 
