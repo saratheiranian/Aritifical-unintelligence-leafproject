@@ -59,3 +59,7 @@ Measured on a Windows laptop CPU (Python 3.11, `outputs/final_model.pt`, one lea
 
 So the requirement of under 2 s per prediction on a laptop CPU holds. These times are for the
 model only; the app adds a little time for uploading the image and showing the results.
+
+## Next
+
+- Deploy the Space once the teaching team confirms the deployment option.
