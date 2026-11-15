@@ -243,6 +243,9 @@ for 20 epochs, and the cosine learning-rate schedule. The sweep should separate 
 
 ### Test-set evaluation of the full-data model (`python -m src.evaluate`)
 
+Re-run on 15 Nov with Weights & Biases logging (run `1hp9lxh9`, project
+Aritifical-unintelligence-leafproject): same results as the 27 Oct run.
+
 - Accuracy 99.0%, top-5 accuracy 99.99%, macro F1 0.986, weighted F1 0.990.
 - Every class has F1 ≥ 0.89, including the smallest classes, which scored 0% after the
   subset run (Potato healthy 0.978, Apple cedar rust 0.988, Grape healthy 1.000).
@@ -255,7 +258,7 @@ for 20 epochs, and the cosine learning-rate schedule. The sweep should separate 
 | Corn: Northern leaf blight | 0.933 | 0.946 | 0.939 | 147 |
 
 - Error analysis: the two corn diseases are mostly confused with each other; both show grey-brown
-  elongated lesions. See `outputs/confusion_matrix.png` (not committed) or the ClearML eval task.
+  elongated lesions. See the confusion matrix in W&B run `1hp9lxh9`.
 
 ### App check (`python app/app.py`)
 
