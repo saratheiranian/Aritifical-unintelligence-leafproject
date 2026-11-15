@@ -63,15 +63,16 @@ suggestive, not conclusive. Worth trying strong augmentation with more epochs fo
 
 ```bash
 python -m src.robustness --checkpoint outputs/final_model.pt outputs/cnn_augment-none.pt \
-    outputs/cnn_augment-strong.pt --no-clearml
+    outputs/cnn_augment-strong.pt --run-name maryam-robustness
 ```
 
 All 8,318 test images, 7 distortions at 3 strengths each (22 levels including clean). Each batch
 is distorted once and given to all three models, so they see identical images; the noise is seeded,
 so the run is repeatable. Distortions are applied to the original image before the usual resize to
-128x128, as they would be in a phone photo. Re-run on 14 Nov with Weights & Biases logging (run `rtdvfvn3`, project
-Aritifical-unintelligence-leafproject): every number was identical, so the test is fully repeatable. Figures (not
-committed): `outputs/robustness/robustness_accuracy.png` and `outputs/robustness/distortions_preview.png`.
+128x128, as they would be in a phone photo. Re-run on 15 Nov with Weights & Biases logging and the
+no-leaf rate (W&B run `mye5k1mi`, project Aritifical-unintelligence-leafproject): every accuracy
+was identical to the first run, so the test is fully repeatable. Figures (not committed):
+`outputs/robustness/robustness_accuracy.png` and `outputs/robustness/distortions_preview.png`.
 
 Models: `final_model` is the 99% model (all training data, 20 epochs, basic augmentation, task
 `1bee769f0c32413e8b0ad57fdcc7d626`); `augment-none` and `augment-strong` are the 4 Nov subset models
@@ -147,6 +148,38 @@ pixels, noise standard deviation on the 0-255 scale, share of light kept (dark),
 - A first run on a fixed sample of 500 test images gave the same picture: the mean over the
   distorted levels was within 2 points for every model, though single levels differed by up to
   4.1 points (augment-strong at bright 1.6), so single levels from a sample are less reliable.
+
+**When a leaf is read as "no leaf".** The dataset has a class Background_without_leaves (photos
+with no leaf). Reading a leaf photo as that class is a distinct kind of failure: the model does not
+give a wrong disease, it says there is no leaf. The table shows the share of leaf photos read as
+Background_without_leaves (from `outputs/robustness/robustness_no_leaf_table.md`, rounded to whole
+percent). Clean photos and every level not listed stay at 1% or less for all three models.
+
+| Distortion | Strength | final_model | augment-none | augment-strong |
+| --- | --- | --- | --- | --- |
+| blur | 4 | 3% | 1% | 0% |
+| noise | 25 | 29% | 8% | 3% |
+| noise | 50 | 62% | 62% | 30% |
+| dark | 0.5 | 0% | 10% | 1% |
+| dark | 0.3 | 11% | 19% | 11% |
+| bright | 1.3 | 0% | 4% | 0% |
+| bright | 1.6 | 0% | 16% | 0% |
+| bright | 2 | 1% | 27% | 1% |
+| jpeg | 5 | 13% | 6% | 11% |
+
+- **Noise is the main cause.** At noise 25 the final model reads 29% of leaf
+  photos as "no leaf", about half of its mistakes at that level, and at noise 50 the final model
+  and augment-none do so for 62%. This matches the Grad-CAM results (15 Nov, from the Grad-CAM
+  pull request): the noisy tomato leaf there is read as Background without leaves, with the heat
+  spread over the background.
+- **Strong augmentation halves it at noise 50** (30% against 62%) and keeps it at 3% at noise 25,
+  although it was never trained with noise either.
+- **Without augmentation, lighting changes also hide the leaf**: 27% at double brightness and 19%
+  at 30% of the light, against 1% and 11% for the final model. This is the same lighting shortcut
+  as in the accuracy table.
+- **For the app this is the safer failure**: "no leaf found, please take a sharper photo" is better
+  than a confident wrong disease. It is still a failure, since the leaf was there. At the mildest
+  strength of every distortion the final model and augment-strong stay below 0.5%.
 
 ## 9 Nov 2026: leak check (Sara)
 
