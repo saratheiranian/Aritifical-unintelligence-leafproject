@@ -206,11 +206,13 @@ def test_main_saves_figures_and_logs_to_wandb(checkpoint, tmp_path, monkeypatch)
 
     out = tmp_path / "gradcam"
     table = gradcam.main(["--checkpoint", str(checkpoint), str(second), "--output-dir", str(out),
-                          "--n-correct", "2", "--n-wrong", "2", "--batch-size", "4"])
+                          "--n-correct", "2", "--n-wrong", "2", "--batch-size", "4",
+                          "--random-seeds", "2"])
     for name in ["gradcam_examples.png", "gradcam_mistakes.png", "gradcam_models.png",
                  "gradcam_distortions.png", "gradcam_examples.csv", "gradcam_mistakes.csv",
                  "gradcam_confused_pairs.csv", "gradcam_attention.csv",
-                 "gradcam_attention_summary.csv", "gradcam_leaf_masks.png", "gradcam_sanity.png"]:
+                 "gradcam_attention_summary.csv", "gradcam_leaf_masks.png", "gradcam_sanity.png",
+                 "gradcam_sanity_summary.csv"]:
         assert (out / name).exists(), name
     assert set(table.columns) == {"test_index", "kind", "true", "predicted", "confidence"}
     assert logged["init"]["tags"] == ["eval", "gradcam"]
@@ -219,10 +221,15 @@ def test_main_saves_figures_and_logs_to_wandb(checkpoint, tmp_path, monkeypatch)
     assert run.summary["gradcam/scanned_images"] == 6
     assert run.summary["gradcam/mistakes"] == len(pd.read_csv(out / "gradcam_mistakes.csv"))
     assert "gradcam/attention_summary" in logged
-    assert "gradcam/sanity_rank_corr" in run.summary
+    assert "gradcam/sanity_summary" in logged
+    sanity = pd.read_csv(out / "gradcam_sanity_summary.csv")
+    assert len(sanity) == 2  # one row per random seed
+    assert run.summary["gradcam/sanity_rank_corr"] == pytest.approx(sanity["rank_corr"].mean())
+    assert run.summary["gradcam/sanity_rank_corr_min"] == pytest.approx(sanity["rank_corr"].min())
+    assert run.summary["gradcam/sanity_rank_corr_max"] == pytest.approx(sanity["rank_corr"].max())
     summary = pd.read_csv(out / "gradcam_attention_summary.csv")
-    assert len(summary) == 3  # two models and the first one with random weights
-    assert summary["model"].iloc[-1].endswith("(random weights)")
+    assert len(summary) == 4  # two models and the first one with two sets of random weights
+    assert summary["model"].iloc[-1].endswith("(random weights, seed 43)")
     assert logged["finished"]
 
 
@@ -257,6 +264,7 @@ def fake_run_setup(monkeypatch, n_images=6):
     (["--n-wrong", "-1"], "--n-wrong cannot be negative"),
     (["--n-distorted", "-1"], "--n-distorted cannot be negative"),
     (["--attention-sample", "-1"], "--attention-sample cannot be negative"),
+    (["--random-seeds", "0"], "--random-seeds must be at least 1"),
     (["--n-correct", "0", "--n-wrong", "0"], "cannot both be 0"),
     (["--checkpoint", "missing.pt"], "checkpoint not found: missing.pt"),
 ])
@@ -344,6 +352,26 @@ def test_randomised_copy_leaves_the_original_untouched():
     assert not random_model.training
     again = gradcam.randomised_copy(model)
     assert torch.equal(again.features[0][0].weight, random_model.features[0][0].weight)
+    other = gradcam.randomised_copy(model, seed=7)
+    assert not torch.equal(other.features[0][0].weight, random_model.features[0][0].weight)
+
+
+def test_randomised_copy_draws_the_weights_on_the_cpu(monkeypatch):
+    """The same seed must give the same weights on any device: a Mac GPU draws other numbers
+    than a CPU, so the copy is moved to the CPU, the weights are drawn, and only then is it moved
+    back to the model's device."""
+    model = PlantCNN(base_channels=8, depth=3).eval()
+    events = []
+    real_cpu, real_to, real_reset = nn.Module.cpu, nn.Module.to, nn.Conv2d.reset_parameters
+    monkeypatch.setattr(nn.Module, "cpu", lambda self: events.append("cpu") or real_cpu(self))
+    monkeypatch.setattr(nn.Module, "to",
+                        lambda self, *a, **k: events.append(("to", *a)) or real_to(self, *a, **k))
+    monkeypatch.setattr(nn.Conv2d, "reset_parameters",
+                        lambda self: events.append("reset") or real_reset(self))
+    gradcam.randomised_copy(model)
+    assert events[0] == "cpu" and "reset" in events
+    assert events[-1] == ("to", torch.device("cpu"))  # back to the model's own device
+    assert events.index(events[-1]) > max(i for i, e in enumerate(events) if e == "reset")
 
 
 def test_bootstrap_ci_and_rank_correlation():
@@ -379,15 +407,22 @@ def test_measure_attention_sees_heat_on_the_leaf():
     transform = get_transforms(64)
     mask = gradcam.leaf_mask(image, (64, 64))
     models = {"green": (GreenModel().eval(), transform), "same": (GreenModel().eval(), transform)}
-    per_photo, examples = gradcam.measure_attention(models, [image, image], [mask, mask])
+    per_photo, examples = gradcam.measure_attention(models, [image, image], [mask, mask],
+                                                    seeds=(1, 2))
     green = per_photo[per_photo["model"] == "green"]
     assert (green["heat_on_leaf"] > 0.9).all()  # almost all heat is on the leaf
     assert green["leaf_area"].iloc[0] == pytest.approx(mask.mean())
-    assert per_photo["rank_corr_with_random"].notna().sum() == 2  # only the first model's rows
+    assert per_photo["rank_corr_with_trained"].notna().sum() == 4  # 2 photos x 2 random seeds
+    assert per_photo.loc[per_photo["rank_corr_with_trained"].notna(), "model"].str.contains(
+        "random weights").all()
     assert len(examples["trained"]) == 2 and len(examples["random"]) == 2
+    seed_1, seed_2 = (per_photo[per_photo["model"] == f"green (random weights, seed {k})"]
+                      for k in (1, 2))
+    assert not np.allclose(seed_1["heat_on_leaf"], seed_2["heat_on_leaf"])  # different weights
 
     summary = gradcam.summarise_attention(per_photo, "green")
-    assert list(summary["model"]) == ["green", "same", "green (random weights)"]
+    assert list(summary["model"]) == ["green", "same", "green (random weights, seed 1)",
+                                      "green (random weights, seed 2)"]
     assert summary.loc[1, "diff_vs_first"] == pytest.approx(0.0)  # same model, same photos
     assert np.isnan(summary.loc[0, "diff_vs_first"])
 
@@ -531,4 +566,18 @@ def test_leaf_mask_keeps_dry_lesions_next_to_a_beige_background():
     leaf = ((xx - 64) / 40) ** 2 + ((yy - 64) / 50) ** 2 < 1
     mask = gradcam.leaf_mask(image, (128, 128))
     assert (mask & leaf).sum() / (mask | leaf).sum() > 0.9
+
+
+def test_summarise_sanity_gives_one_row_per_seed():
+    per_photo = pd.DataFrame({
+        "photo": [0, 1, 0, 1, 0, 1],
+        "model": ["m"] * 2 + ["m (random weights, seed 1)"] * 2 + ["m (random weights, seed 2)"] * 2,
+        "heat_on_leaf": [0.9, 0.8, 0.5, 0.4, 0.6, 0.6],
+        "rank_corr_with_trained": [np.nan, np.nan, 0.1, 0.3, 0.5, 0.5],
+    })
+    sanity = gradcam.summarise_sanity(per_photo)
+    assert list(sanity["model"]) == ["m (random weights, seed 1)", "m (random weights, seed 2)"]
+    assert list(sanity["rank_corr"]) == pytest.approx([0.2, 0.5])
+    assert list(sanity["heat_on_leaf"]) == pytest.approx([0.45, 0.6])
+    assert (sanity["ci_low"] <= sanity["rank_corr"]).all()
 

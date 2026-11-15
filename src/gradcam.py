@@ -26,9 +26,11 @@ Two measurements turn the examples into numbers (--attention-sample photos, defa
   comparison between them stays fair even where a mask is imperfect. gradcam_leaf_masks.png shows
   the masks for a visual check.
 - Sanity check (Adebayo et al., 2018): the first model's heatmaps are compared with those of the
-  same model with random weights. If Grad-CAM explains what the model learned, the two should
-  differ (low rank correlation); gradcam_sanity.png shows examples.
-Results: gradcam_attention.csv (every photo and model) and gradcam_attention_summary.csv.
+  same model with random weights, for several random initialisations (--random-seeds, default 5)
+  because one draw can be unusual. If Grad-CAM explains what the model learned, the two should
+  differ (low rank correlation); gradcam_sanity.png shows examples for the first seed.
+Results: gradcam_attention.csv (every photo and model), gradcam_attention_summary.csv and
+gradcam_sanity_summary.csv (one row per random initialisation).
 
 Without --no-wandb the figures, tables and statistics are also logged to Weights & Biases.
 
@@ -312,15 +314,17 @@ def heat_on_leaf(cam, mask):
 
 def randomised_copy(model, seed=SEED):
     """The same architecture with fresh random weights, for the sanity check. The original model
-    is not changed."""
-    random_model = copy.deepcopy(model)
+    is not changed. The weights are drawn on the CPU and then moved to the model's device, so a
+    seed gives the same weights on a Mac GPU, an NVIDIA GPU or a CPU."""
+    device = next(model.parameters()).device
+    random_model = copy.deepcopy(model).cpu()
     torch.manual_seed(seed)
     for module in random_model.modules():
         if hasattr(module, "reset_parameters"):
             module.reset_parameters()
         if hasattr(module, "reset_running_stats"):
             module.reset_running_stats()
-    return random_model.eval()
+    return random_model.to(device).eval()
 
 
 def bootstrap_ci(values, n_boot=2000, seed=SEED):
@@ -366,16 +370,25 @@ def choose_attention_photos(test, image_col, labels, positions, n, size, no_leaf
     return chosen, images, masks, skipped
 
 
-def measure_attention(models, images, masks, device="cpu", batch_size=64):
+def random_name(first, seed):
+    """Name of the first model with the random weights of one seed."""
+    return f"{first} (random weights, seed {seed})"
+
+
+def measure_attention(models, images, masks, device="cpu", batch_size=64, seeds=(SEED,)):
     """Heat on the leaf for every photo and model, plus the sanity check for the first model.
 
     Returns (per_photo, example_cams): per_photo has one row per photo and model with the leaf
-    area and the heat on the leaf; the first model also appears with random weights, and its
-    rows hold the rank correlation between its trained and random heatmaps. example_cams holds
-    the first model's trained and random heatmaps of the first 4 photos, for the figure."""
+    area and the heat on the leaf. The first model also appears once per seed with random
+    weights; those rows hold the rank correlation between its trained and random heatmaps.
+    One random draw can be unusual, so several seeds show how much the check varies.
+    example_cams holds the first model's trained heatmaps and those of the first seed for the
+    first 4 photos, for the figure."""
     first = next(iter(models))
     to_measure = dict(models)
-    to_measure[f"{first} (random weights)"] = (randomised_copy(models[first][0]), models[first][1])
+    for seed in seeds:
+        to_measure[random_name(first, seed)] = (randomised_copy(models[first][0], seed),
+                                                models[first][1])
     cams = {name: [] for name in to_measure}
     for start in range(0, len(images), batch_size):
         batch = images[start:start + batch_size]
@@ -389,13 +402,25 @@ def measure_attention(models, images, masks, device="cpu", batch_size=64):
             rows.append({"photo": i, "model": name, "leaf_area": float(mask.mean()),
                          "heat_on_leaf": heat_on_leaf(cam, mask)})
     per_photo = pd.DataFrame(rows)
-    random_name = f"{first} (random weights)"
-    per_photo["rank_corr_with_random"] = np.nan
-    trained = per_photo["model"] == first
-    per_photo.loc[trained, "rank_corr_with_random"] = [
-        rank_correlation(a, b) for a, b in zip(cams[first], cams[random_name])]
-    examples = {"trained": cams[first][:4], "random": cams[random_name][:4]}
+    per_photo["rank_corr_with_trained"] = np.nan
+    for seed in seeds:
+        name = random_name(first, seed)
+        per_photo.loc[per_photo["model"] == name, "rank_corr_with_trained"] = [
+            rank_correlation(a, b) for a, b in zip(cams[first], cams[name])]
+    examples = {"trained": cams[first][:4], "random": cams[random_name(first, seeds[0])][:4]}
     return per_photo, examples
+
+
+def summarise_sanity(per_photo):
+    """One row per random seed: the mean rank correlation between the trained and the random
+    heatmaps with its 95% interval, and the heat on the leaf with random weights."""
+    rows = []
+    for name, part in per_photo[per_photo["rank_corr_with_trained"].notna()].groupby(
+            "model", sort=False):
+        mean, low, high = bootstrap_ci(part["rank_corr_with_trained"])
+        rows.append({"model": name, "rank_corr": mean, "ci_low": low, "ci_high": high,
+                     "heat_on_leaf": float(part["heat_on_leaf"].mean())})
+    return pd.DataFrame(rows)
 
 
 def summarise_attention(per_photo, first):
@@ -586,6 +611,8 @@ def main(argv=None):
     p.add_argument("--attention-sample", type=int, default=300,
                    help="random photos for the heat-on-leaf measure and the sanity check "
                         "(0 = skip both)")
+    p.add_argument("--random-seeds", type=int, default=5,
+                   help="random initialisations for the sanity check (default 5)")
     p.add_argument("--batch-size", type=int, default=64)
     p.add_argument("--run-name", default="gradcam", help="name of the WandB run")
     p.add_argument("--output-dir", default=OUTPUT_DIR)
@@ -595,6 +622,8 @@ def main(argv=None):
         p.error("--sample must be at least 1")
     if args.batch_size < 1:
         p.error("--batch-size must be at least 1")
+    if args.random_seeds < 1:
+        p.error("--random-seeds must be at least 1")
     for option in ("n_correct", "n_wrong", "n_distorted", "attention_sample"):
         if getattr(args, option) < 0:
             p.error(f"--{option.replace('_', '-')} cannot be negative")
@@ -706,17 +735,23 @@ def main(argv=None):
         picked, photos, masks, skipped = choose_attention_photos(
             test, image_col, labels, indices, args.attention_sample, (width, height), no_leaf)
         if photos:
-            per_photo, examples = measure_attention(models, photos, masks, device, args.batch_size)
+            seeds = tuple(SEED + k for k in range(args.random_seeds))
+            per_photo, examples = measure_attention(models, photos, masks, device,
+                                                    args.batch_size, seeds)
             per_photo.insert(0, "test_index", [int(indices[picked[i]]) for i in per_photo["photo"]])
             per_photo.to_csv(os.path.join(args.output_dir, "gradcam_attention.csv"), index=False)
             attention = summarise_attention(per_photo, first)
             attention.to_csv(os.path.join(args.output_dir, "gradcam_attention_summary.csv"),
                              index=False)
-            sanity = bootstrap_ci(per_photo["rank_corr_with_random"])
+            sanity = summarise_sanity(per_photo)
+            sanity.to_csv(os.path.join(args.output_dir, "gradcam_sanity_summary.csv"), index=False)
             print(f"Heat on the leaf ({len(photos)} random photos, {skipped} skipped because the "
                   f"leaf mask looked wrong):\n" + attention.round(3).to_string(index=False))
+            corr = sanity["rank_corr"]
             print(f"Sanity check: rank correlation between {first} and the same model with random "
-                  f"weights {sanity[0]:.2f} (95% CI {sanity[1]:.2f} to {sanity[2]:.2f})")
+                  f"weights, over {len(sanity)} random initialisation(s): mean {corr.mean():.2f}, "
+                  f"from {corr.min():.2f} to {corr.max():.2f}\n"
+                  + sanity.round(3).to_string(index=False))
             figures["leaf_masks"] = plot_leaf_masks(
                 photos, masks, os.path.join(args.output_dir, "gradcam_leaf_masks.png"))
             figures["sanity"] = plot_sanity(
@@ -738,7 +773,10 @@ def main(argv=None):
             run.log({"gradcam/attention_summary": wandb.Table(dataframe=attention)})
             for _, row in attention.iterrows():
                 run.summary[f"gradcam/heat_on_leaf/{row['model']}"] = row["heat_on_leaf"]
-            run.summary["gradcam/sanity_rank_corr"] = sanity[0]
+            run.log({"gradcam/sanity_summary": wandb.Table(dataframe=sanity)})
+            run.summary["gradcam/sanity_rank_corr"] = corr.mean()
+            run.summary["gradcam/sanity_rank_corr_min"] = corr.min()
+            run.summary["gradcam/sanity_rank_corr_max"] = corr.max()
             run.summary["gradcam/attention_photos"] = len(photos)
             run.summary["gradcam/attention_skipped"] = skipped
         for key, value in stats.items():
