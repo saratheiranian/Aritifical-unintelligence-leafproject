@@ -48,4 +48,14 @@ Files that would be uploaded to the Space:
 
 ## Next
 
-- Deploy the Space once the teaching team confirms the deployment option.
+## CPU timing (issue #32, 10 Nov)
+
+Measured on a Windows laptop CPU (Python 3.11, `outputs/final_model.pt`, one leaf photo), using
+`Predictor` from `src/inference.py`:
+
+- Model load: 0.07 s (once, when the app starts)
+- First prediction: 0.129 s
+- Average over 20 predictions: 0.007 s
+
+So the requirement of under 2 s per prediction on a laptop CPU holds. These times are for the
+model only; the app adds a little time for uploading the image and showing the results.
