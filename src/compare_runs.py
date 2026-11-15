@@ -1,34 +1,42 @@
-"""Collect finished ClearML training runs into one results table for the report.
+"""Collect finished W&B training runs into one results table for the report.
 
     python -m src.compare_runs --tag sweep
 
 Writes outputs/results.csv and outputs/results.md (a Markdown table to paste into the report).
+Only runs W&B marks as finished are included, so crashed or stopped runs stay out of the table.
 """
 
 import argparse
 import os
 
 import pandas as pd
+import wandb
 
-from src.train import CLEARML_PROJECT
+from src.config import WANDB_ENTITY, WANDB_PROJECT
 
-PARAMS = ["arch", "lr", "optimizer", "batch_size", "dropout", "no_batchnorm", "no_augment", "augment",
-          "depth", "base_channels", "scheduler", "img_size", "subset",
-          "label_smoothing", "class_weights", "balanced_sampler"]
+PARAMS = ["arch", "lr", "optimizer", "batch_size", "dropout", "no_batchnorm", "no_augment",
+          "depth", "base_channels", "scheduler", "img_size", "subset"]
 
 
-def summarise(task):
-    params = task.get_parameters_as_dict().get("Args", {})
-    scalars = task.get_reported_scalars()
-    val = scalars.get("accuracy", {}).get("val", {}).get("y", [])
-    train = scalars.get("accuracy", {}).get("train", {}).get("y", [])
-    times = scalars.get("epoch time (s)", {}).get("time", {}).get("y", [])
-    row = {"name": task.name, "id": task.id}
-    row |= {key: params.get(key) for key in PARAMS}
-    row["best_val_acc"] = max(val) if val else None
-    row["best_train_acc"] = max(train) if train else None
+def column(history, key):
+    if key not in history.columns:
+        return pd.Series(dtype=float)
+    return history[key].dropna()
+
+
+def summarise(run):
+    history = run.history(pandas=True)
+    val = column(history, "val_acc")
+    train = column(history, "train_acc")
+    times = column(history, "epoch_time")
+
+    row = {"name": run.name, "id": run.id}
+    row |= {key: run.config.get(key) for key in PARAMS}
+    row["best_val_acc"] = val.max() if len(val) else None
+    row["best_train_acc"] = train.max() if len(train) else None
     row["epochs"] = len(val)
-    row["mean_epoch_seconds"] = sum(times) / len(times) if times else None
+    row["mean_epoch_seconds"] = times.mean() if len(times) else None
+    row["url"] = run.url
     return row
 
 
@@ -38,22 +46,26 @@ def main(argv=None):
     p.add_argument("--output-dir", default="outputs")
     args = p.parse_args(argv)
 
-    from clearml import Task
+    path = f"{WANDB_ENTITY}/{WANDB_PROJECT}"
+    filters = {"tags": {"$in": [args.tag]}, "state": "finished"}
+    try:
+        runs = wandb.Api().runs(path, filters=filters)
+        rows = [summarise(run) for run in runs]
+    except (wandb.errors.CommError, ValueError) as err:
+        raise SystemExit(f"Could not read runs from W&B project {path}: {err}")
 
-    tasks = Task.get_tasks(
-        project_name=CLEARML_PROJECT,
-        tags=[args.tag],
-        task_filter={"status": ["completed", "stopped"]},
-    )
-    if not tasks:
-        print(f"No finished tasks tagged '{args.tag}' in {CLEARML_PROJECT}")
+    if not rows:
+        print(f"No finished runs tagged '{args.tag}' in {path}")
         return
-    df = pd.DataFrame([summarise(t) for t in tasks]).sort_values("best_val_acc", ascending=False)
+
+    df = pd.DataFrame(rows).sort_values("best_val_acc", ascending=False, na_position="last")
     os.makedirs(args.output_dir, exist_ok=True)
     df.to_csv(os.path.join(args.output_dir, "results.csv"), index=False)
+
+    table = df.drop(columns=["id", "url"])
     with open(os.path.join(args.output_dir, "results.md"), "w") as f:
-        f.write(df.drop(columns=["id"]).to_markdown(index=False, floatfmt=".4f"))
-    print(df.drop(columns=["id"]).to_string(index=False))
+        f.write(table.to_markdown(index=False, floatfmt=".4f"))
+    print(table.to_string(index=False))
 
 
 if __name__ == "__main__":
