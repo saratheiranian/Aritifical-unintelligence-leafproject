@@ -110,15 +110,30 @@ class ResidualCNN(nn.Module):
         return self.head(self.features(self.stem(x)))
 
 
-def resnet18_finetune(num_classes=NUM_CLASSES, pretrained=True, freeze_backbone=False):
-    """Transfer-learning baseline: ImageNet ResNet18 with a new classification layer."""
-    weights = models.ResNet18_Weights.DEFAULT if pretrained else None
-    model = models.resnet18(weights=weights)
-    if freeze_backbone:
-        for param in model.parameters():
-            param.requires_grad = False
-    model.fc = nn.Linear(model.fc.in_features, num_classes)
-    return model
+NUM_CLASSES = 39
+
+
+def get_resnet18_baseline(device, lr=0.001, momentum=0.9, step_size=7, gamma=0.1):
+ 
+  weights = models.ResNet18_Weights.IMAGENET1K_V1
+  model_ft = models.resnet18(weights=weights)
+  num_ftrs = model_ft.fc.in_features
+  model_ft.fc = nn.Linear(num_ftrs, NUM_CLASSES)
+  model_ft = model_ft.to(device)
+  criterion = nn.CrossEntropyLoss()
+  optimizer_ft = optim.SGD(model_ft.parameters(), lr=lr, momentum=momentum)
+  exp_lr_scheduler = lr_scheduler.StepLR(
+      optimizer_ft, step_size=step_size, gamma=gamma
+  )
+
+  return model_ft, criterion, optimizer_ft, exp_lr_scheduler
+
+
+if __name__ == "__main__":
+  device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+  model, criterion, optimizer, scheduler = get_resnet18_baseline(device)
+  print(f"ResNet18 baseline successfully initialized for {NUM_CLASSES} classes.")
 
 
 def build_model(arch, **kwargs):
