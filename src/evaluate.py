@@ -81,6 +81,16 @@ def main(argv=None):
                          job_type="eval", tags=["eval", "test"], config=vars(args))
         print(f"W&B run ID: {run.id}")
 
+    # finish the W&B run even if evaluation fails halfway, so it is not left running
+    try:
+        return run_evaluation(args, run)
+    finally:
+        if run:
+            run.finish()
+
+
+def run_evaluation(args, run=None):
+    """Evaluate args.checkpoint on the test split; log to `run` if one is given."""
     device = get_device()
     model, ckpt = load_checkpoint(args.checkpoint, device)
     loaders, class_names = make_loaders(
@@ -108,7 +118,11 @@ def main(argv=None):
     cm = confusion_matrix(labels, preds, labels=range(len(class_names)))
     fig = plot_confusion_matrix(cm, class_names, os.path.join(args.output_dir, "confusion_matrix.png"))
 
+    macro_f1 = float(report_df.loc["macro avg", "f1-score"])
+
     if run:
+        import wandb
+
         worst = report_df.iloc[: len(class_names)].sort_values("f1-score").head(5)
         run.log({
             "test/per_class": wandb.Table(dataframe=report_df.reset_index(names="class")),
@@ -117,10 +131,9 @@ def main(argv=None):
         })
         run.summary["test_accuracy"] = acc
         run.summary["test_top5_accuracy"] = top5
-        run.summary["test_macro_f1"] = float(report_df.loc["macro avg", "f1-score"])
+        run.summary["test_macro_f1"] = macro_f1
         print(f"Logged to W&B run {run.id}: {run.url}")
-        run.finish()
-    return {"accuracy": acc, "top5_accuracy": top5}
+    return {"accuracy": acc, "top5_accuracy": top5, "macro_f1": macro_f1}
 
 
 if __name__ == "__main__":

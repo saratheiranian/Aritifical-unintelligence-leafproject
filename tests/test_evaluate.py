@@ -60,8 +60,9 @@ def test_plot_confusion_matrix_writes_png(tmp_path):
 
 def test_main_writes_report_and_confusion_matrix(checkpoint, tmp_path, fake_loaders):
     result = evaluate.main(["--checkpoint", str(checkpoint), "--no-wandb", "--output-dir", str(tmp_path)])
-    assert set(result) == {"accuracy", "top5_accuracy"}
+    assert set(result) == {"accuracy", "top5_accuracy", "macro_f1"}
     assert 0.0 <= result["accuracy"] <= result["top5_accuracy"] <= 1.0
+    assert 0.0 <= result["macro_f1"] <= 1.0
     assert (tmp_path / "test_report.csv").exists()
     assert (tmp_path / "confusion_matrix.png").exists()
     # evaluation must use the image size the model was trained with, and no augmentation
@@ -72,17 +73,37 @@ def test_main_writes_report_and_confusion_matrix(checkpoint, tmp_path, fake_load
 def test_main_logs_to_wandb(checkpoint, tmp_path, fake_loaders, monkeypatch):
     fake_wandb = MagicMock()
     monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
+    run = fake_wandb.init.return_value
+    run.summary = {}  # a real dict, so we can check the exact values written to it
 
-    evaluate.main(["--checkpoint", str(checkpoint), "--output-dir", str(tmp_path)])
+    result = evaluate.main(["--checkpoint", str(checkpoint), "--output-dir", str(tmp_path)])
 
     init_kwargs = fake_wandb.init.call_args.kwargs
     assert init_kwargs["entity"] == WANDB_ENTITY
     assert init_kwargs["project"] == WANDB_PROJECT
-    run = fake_wandb.init.return_value
     logged = run.log.call_args.args[0]
     assert set(logged) == {"test/per_class", "test/weakest_classes", "test/confusion_matrix"}
-    run.summary.__setitem__.assert_any_call("test_accuracy", pytest.approx(0, abs=1))
+    # the summary holds exactly the numbers main() returns
+    assert run.summary == {
+        "test_accuracy": result["accuracy"],
+        "test_top5_accuracy": result["top5_accuracy"],
+        "test_macro_f1": result["macro_f1"],
+    }
     run.finish.assert_called_once()
+
+
+def test_main_finishes_wandb_run_when_evaluation_fails(checkpoint, tmp_path, monkeypatch):
+    fake_wandb = MagicMock()
+    monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
+
+    def broken_make_loaders(**kwargs):
+        raise RuntimeError("dataset not available")
+
+    monkeypatch.setattr(evaluate, "make_loaders", broken_make_loaders)
+
+    with pytest.raises(RuntimeError, match="dataset not available"):
+        evaluate.main(["--checkpoint", str(checkpoint), "--output-dir", str(tmp_path)])
+    fake_wandb.init.return_value.finish.assert_called_once()
 
 
 def test_old_no_clearml_flag_still_turns_logging_off(checkpoint, tmp_path, fake_loaders, monkeypatch):
