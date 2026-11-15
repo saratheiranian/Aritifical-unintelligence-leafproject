@@ -1,11 +1,11 @@
-"""Robustness test: how much accuracy drops when test photos are distorted.
+r"""Robustness test: how much accuracy drops when test photos are distorted.
 
 PlantVillage photos were taken in a lab: one leaf, a plain background and even light. Phone photos
 taken in a field are often blurry, dark, noisy, tilted, zoomed in or heavily compressed. This
 script applies one distortion at a time, at three strengths, to the test images only (never to
 training images) and measures how each model copes.
 
-    python -m src.robustness --preview --no-wandb            # figure of every distortion only
+    python -m src.robustness --preview                       # figure of every distortion only
     python -m src.robustness --checkpoint outputs/final_model.pt --sample 500 --no-wandb
     python -m src.robustness --checkpoint outputs/final_model.pt outputs/cnn_augment-none.pt \
         outputs/cnn_augment-strong.pt
@@ -13,8 +13,10 @@ training images) and measures how each model copes.
 Every model sees exactly the same distorted images (the noise is seeded), so the comparison is
 fair. Outputs go to outputs/robustness/: robustness_results.csv (every model, distortion and
 strength), robustness_summary.csv (one row per model), robustness_table.md (accuracy at every
-level, ready for docs/results.md) and robustness_accuracy.png. Without --no-wandb the results,
-summary and charts are also logged to the team's Weights & Biases project (src/config.py).
+level, ready for docs/results.md), robustness_no_leaf_table.md (share of leaf photos read as
+"Background_without_leaves" at every level) and robustness_accuracy.png. Without --no-wandb the
+results, summary and charts are also logged to the team's Weights & Biases project
+(src/config.py).
 """
 
 import argparse
@@ -38,6 +40,7 @@ from src.models import get_device
 from src.transforms import get_transforms
 
 OUTPUT_DIR = os.path.join("outputs", "robustness")
+NO_LEAF_CLASS = "Background_without_leaves"  # the class for photos with no leaf at all
 
 # Each model was trained once, so small gaps between models may be down to the training run
 # rather than the model. The results table only marks a winner that leads by at least this much.
@@ -53,7 +56,7 @@ def save_preview(image, path):
         axes[row, 0].set_ylabel(name)
         for col, strength in enumerate(strengths, start=1):
             axes[row, col].imshow(apply_distortion(image, name, strength, seed=SEED))
-            axes[row, col].set_title(f"{name} {strength}", fontsize=8)
+            axes[row, col].set_title(f"{name} {strength_label(strength)}", fontsize=8)
     for ax in axes.flat:
         ax.set_xticks([])
         ax.set_yticks([])
@@ -106,13 +109,27 @@ def load_models(checkpoint_paths, device):
     return models
 
 
+def macro_f1(labels, preds):
+    """Macro F1 over the classes that occur in the tested images.
+
+    Classes missing from a --sample run are left out instead of counting as F1 = 0, which would
+    pull the score down (a perfect run on 25 of the 39 classes would score 25/39 = 0.64). On the
+    full test set every class occurs, so the result is the usual macro F1."""
+    return float(f1_score(labels, preds, labels=np.unique(labels), average="macro",
+                          zero_division=0))
+
+
 @torch.no_grad()
-def evaluate_distortions(models, test, image_col, label_col, num_classes, indices,
-                         batch_size=64, device="cpu", levels=None):
+def evaluate_distortions(models, test, image_col, label_col, indices, batch_size=64,
+                         device="cpu", levels=None, no_leaf_class=None):
     """Accuracy and macro F1 of every model at every distortion level.
 
     Each batch of images is distorted once and then given to every model, so all models are
     tested on exactly the same images. Returns a table with one row per model and level.
+
+    no_leaf_class: index of the "Background_without_leaves" class. When given, the column
+    "no_leaf" is the share of photos that do show a leaf but were read as "no leaf", which is
+    what noise seems to cause.
     """
     rows = []
     for name, strength in levels or all_levels():
@@ -131,17 +148,23 @@ def evaluate_distortions(models, test, image_col, label_col, num_classes, indice
                 inputs = torch.stack([transform(image) for image in images]).to(device)
                 predictions[model_name].append(model(inputs).argmax(dim=1).cpu().numpy())
         labels = np.array(labels)
+        leaf_photos = labels != no_leaf_class
         for model_name in models:
             preds = np.concatenate(predictions[model_name])
+            no_leaf = (float(np.mean(preds[leaf_photos] == no_leaf_class))
+                       if no_leaf_class is not None and leaf_photos.any() else np.nan)
             rows.append({
                 "model": model_name,
                 "distortion": name,
                 "strength": strength,
                 "accuracy": float(np.mean(preds == labels)),
-                "macro_f1": float(f1_score(labels, preds, labels=range(num_classes),
-                                           average="macro", zero_division=0)),
+                "macro_f1": macro_f1(labels, preds),
+                "no_leaf": no_leaf,
             })
-        summary = ", ".join(f"{r['model']} {r['accuracy']:.1%}" for r in rows[-len(models):])
+        summary = ", ".join(
+            f"{r['model']} {r['accuracy']:.1%}"
+            + ("" if np.isnan(r["no_leaf"]) else f" (no leaf {r['no_leaf']:.0%})")
+            for r in rows[-len(models):])
         print(f"{name} {strength_label(strength)}: {summary}")
     return pd.DataFrame(rows)
 
@@ -167,14 +190,24 @@ def summarise(results):
         [f"{d} {strength_label(s)}" for d, s in zip(worst["distortion"], worst["strength"])],
         index=worst["model"],
     )
+    if "no_leaf" in results and results["no_leaf"].notna().any():
+        rows = results.dropna(subset=["no_leaf"])
+        most = rows.loc[rows.groupby("model")["no_leaf"].idxmax()]
+        summary["clean_no_leaf"] = rows[rows["distortion"] == "clean"].set_index("model")["no_leaf"]
+        summary["max_no_leaf"] = pd.Series(list(most["no_leaf"]), index=most["model"])
+        summary["max_no_leaf_level"] = pd.Series(
+            [f"{d} {strength_label(s)}" for d, s in zip(most["distortion"], most["strength"])],
+            index=most["model"])
     return summary.sort_values("mean_distorted_accuracy", ascending=False)
 
 
-def markdown_table(results, min_gap=MIN_GAP):
-    """Accuracy of every model at every level as a Markdown table, for docs/results.md.
+def markdown_table(results, min_gap=MIN_GAP, column="accuracy"):
+    """One value per model and level as a Markdown table, for docs/results.md.
 
-    The best model in a row is in bold only if it leads the runner-up by at least min_gap
-    (5 points by default). With one training run per model, smaller gaps may be noise."""
+    By default the accuracy: the best model in a row is in bold only if it leads the runner-up by
+    at least min_gap (5 points by default), since with one training run per model smaller gaps may
+    be noise. min_gap=None leaves out the bold (used for the "no leaf" table, where lower is
+    better)."""
     model_names = list(results["model"].unique())
     lines = [
         "| Distortion | Strength | " + " | ".join(model_names) + " |",
@@ -187,9 +220,10 @@ def markdown_table(results, min_gap=MIN_GAP):
             level = results[(results["distortion"] == name) & (results["strength"] == strength)]
         if level.empty:
             continue
-        accuracy = level.set_index("model")["accuracy"]
+        accuracy = level.set_index("model")[column]
         ranked = accuracy.sort_values(ascending=False)
-        clear_winner = len(ranked) > 1 and ranked.iloc[0] - ranked.iloc[1] >= min_gap - 1e-9
+        clear_winner = (min_gap is not None and len(ranked) > 1
+                        and ranked.iloc[0] - ranked.iloc[1] >= min_gap - 1e-9)
         cells = []
         for model_name in model_names:
             cell = f"{accuracy[model_name]:.1%}"
@@ -242,13 +276,37 @@ def main(argv=None):
     p.add_argument("--sample", type=int, default=None,
                    help="use a fixed random sample of this many test images (default: all 8,318)")
     p.add_argument("--batch-size", type=int, default=64)
-    p.add_argument("--preview", action="store_true", help="only save the distortion figure")
+    p.add_argument("--preview", action="store_true",
+                   help="only save the distortion figure (no WandB run is started)")
     p.add_argument("--preview-index", type=int, default=0, help="which test image to show")
     p.add_argument("--run-name", default="robustness", help="name of the WandB run")
     p.add_argument("--output-dir", default=OUTPUT_DIR)
     p.add_argument("--no-wandb", action="store_true", help="do not log to Weights & Biases")
     args = p.parse_args(argv)
+    if args.sample is not None and args.sample < 1:
+        p.error("--sample must be at least 1")
+    if args.batch_size < 1:
+        p.error("--batch-size must be at least 1")
+    if not args.preview:
+        missing = [path for path in args.checkpoint if not os.path.exists(path)]
+        if missing:
+            p.error(f"checkpoint not found: {', '.join(missing)}")
 
+    test, image_col, label_col, class_names = load_test_split()
+    if not 0 <= args.preview_index < len(test):
+        p.error(f"--preview-index must be between 0 and {len(test) - 1}")
+    row = test[args.preview_index]
+    preview = save_preview(row[image_col].convert("RGB"),
+                           os.path.join(args.output_dir, "distortions_preview.png"))
+    print(f"Saved {preview} (true class: {class_names[row[label_col]]})")
+    if args.preview:  # a quick look at the distortions, not a result: no WandB run
+        return None
+
+    device = get_device()
+    models = load_models(args.checkpoint, device)
+
+    # Started only once the inputs are checked and the data and models load, so a mistake in the
+    # command does not leave a crashed or empty run in the team's project
     run = None
     if not args.no_wandb:
         import wandb
@@ -257,21 +315,12 @@ def main(argv=None):
                          job_type="eval", tags=["eval", "robustness"], config=vars(args))
         print(f"WandB run ID: {run.id}")
 
-    test, image_col, label_col, class_names = load_test_split()
-    row = test[args.preview_index]
-    preview = save_preview(row[image_col].convert("RGB"),
-                           os.path.join(args.output_dir, "distortions_preview.png"))
-    print(f"Saved {preview} (true class: {class_names[row[label_col]]})")
-    if args.preview:
-        return None
-
-    device = get_device()
-    models = load_models(args.checkpoint, device)
     indices = sample_indices(len(test), args.sample)
     print(f"Testing {len(models)} model(s) on {len(indices)} test images, "
           f"{len(all_levels())} levels, on {device}")
-    results = evaluate_distortions(models, test, image_col, label_col, len(class_names),
-                                   indices, args.batch_size, device)
+    no_leaf_class = (class_names.index(NO_LEAF_CLASS) if NO_LEAF_CLASS in class_names else None)
+    results = evaluate_distortions(models, test, image_col, label_col, indices,
+                                   args.batch_size, device, no_leaf_class=no_leaf_class)
     summary = summarise(results)
     print(summary.round(3).to_string())
 
@@ -279,6 +328,9 @@ def main(argv=None):
     summary.to_csv(os.path.join(args.output_dir, "robustness_summary.csv"))
     with open(os.path.join(args.output_dir, "robustness_table.md"), "w") as f:
         f.write(markdown_table(results))
+    if no_leaf_class is not None:
+        with open(os.path.join(args.output_dir, "robustness_no_leaf_table.md"), "w") as f:
+            f.write(markdown_table(results, min_gap=None, column="no_leaf"))
     chart = plot_results(results, os.path.join(args.output_dir, "robustness_accuracy.png"),
                          num_classes=len(class_names))
     print(f"Saved results, summary and chart to {args.output_dir}")
@@ -293,6 +345,9 @@ def main(argv=None):
         for model_name, values in summary.iterrows():
             for column in ["clean_accuracy", "mean_distorted_accuracy", "drop", "kept"]:
                 run.summary[f"{model_name}/{column}"] = float(values[column])
+            for column in ["clean_no_leaf", "max_no_leaf"]:  # only when the class exists
+                if column in values and pd.notna(values[column]):
+                    run.summary[f"{model_name}/{column}"] = float(values[column])
         print(f"Logged to WandB run {run.id}: {run.url}")
         run.finish()
     return results

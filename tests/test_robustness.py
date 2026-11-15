@@ -75,7 +75,7 @@ def test_evaluate_summarise_and_plot(checkpoint, tmp_path):
     models = robustness.load_models([str(checkpoint)], "cpu")
     levels = [("clean", None), ("blur", 2), ("noise", 25)]
     results = robustness.evaluate_distortions(
-        models, test, "image", "label", 39, list(range(6)), batch_size=4, levels=levels
+        models, test, "image", "label", list(range(6)), batch_size=4, levels=levels
     )
     assert len(results) == len(levels)
     assert results["accuracy"].between(0, 1).all()
@@ -85,7 +85,7 @@ def test_evaluate_summarise_and_plot(checkpoint, tmp_path):
     assert summary.loc["cnn", "worst_case"] in {"blur 2", "noise 25"}
 
     full = robustness.evaluate_distortions(
-        models, test, "image", "label", 39, [0, 1], batch_size=2
+        models, test, "image", "label", [0, 1], batch_size=2
     )
     figures_before = set(plt.get_fignums())
     path = tmp_path / "chart.png"
@@ -104,8 +104,8 @@ def test_main_logs_to_wandb(checkpoint, tmp_path, monkeypatch):
         "label": datasets.ClassLabel(num_classes=39),
     })
     test = datasets.Dataset.from_dict({"image": [leaf()] * 2, "label": [0, 1]}, features=features)
-    monkeypatch.setattr(robustness, "load_test_split",
-                        lambda: (test, "image", "label", [f"class {i}" for i in range(39)]))
+    names = [f"class {i}" for i in range(38)] + ["Background_without_leaves"]
+    monkeypatch.setattr(robustness, "load_test_split", lambda: (test, "image", "label", names))
     monkeypatch.setattr(robustness, "get_device", lambda: "cpu")
 
     logged = {}
@@ -124,3 +124,163 @@ def test_main_logs_to_wandb(checkpoint, tmp_path, monkeypatch):
     assert "cnn/kept" in run.summary
     assert logged["finished"]
     assert (tmp_path / "robustness_table.md").exists()
+    assert (tmp_path / "robustness_no_leaf_table.md").exists()
+    assert "cnn/max_no_leaf" in run.summary
+
+
+def test_preview_does_not_start_a_wandb_run(tmp_path, monkeypatch):
+    """--preview saves the distortion figure only; it must not leave an empty run in WandB."""
+    import sys
+    import types
+
+    features = datasets.Features({
+        "image": datasets.Image(),
+        "label": datasets.ClassLabel(num_classes=39),
+    })
+    test = datasets.Dataset.from_dict({"image": [leaf()], "label": [0]}, features=features)
+    monkeypatch.setattr(robustness, "load_test_split",
+                        lambda: (test, "image", "label", [f"class {i}" for i in range(39)]))
+    started = []
+    fake_wandb = types.SimpleNamespace(init=lambda **kwargs: started.append(kwargs))
+    monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
+
+    assert robustness.main(["--preview", "--output-dir", str(tmp_path)]) is None
+    assert started == []  # no run was started
+    assert (tmp_path / "distortions_preview.png").exists()
+
+
+def test_macro_f1_ignores_classes_missing_from_the_sample():
+    """A sample with 2 of the 39 classes, all predicted correctly, must score 1.0, not 2/39."""
+    import torch
+    from torch import nn
+
+    from src.transforms import get_transforms
+
+    class AlwaysRight(nn.Module):
+        """Predicts class 0 for the first image of a batch and class 1 for the second."""
+
+        def forward(self, x):
+            logits = torch.zeros(len(x), 39)
+            logits[torch.arange(len(x)), torch.arange(len(x)) % 2] = 10.0
+            return logits
+
+    features = datasets.Features({
+        "image": datasets.Image(),
+        "label": datasets.ClassLabel(num_classes=39),
+    })
+    test = datasets.Dataset.from_dict({"image": [leaf(), leaf()], "label": [0, 1]},
+                                      features=features)
+    models = {"right": (AlwaysRight(), get_transforms(64))}
+    results = robustness.evaluate_distortions(models, test, "image", "label", [0, 1],
+                                              batch_size=2, levels=[("clean", None)])
+    assert results.loc[0, "accuracy"] == 1.0
+    assert results.loc[0, "macro_f1"] == pytest.approx(1.0)
+    assert robustness.macro_f1([0, 0, 1, 1], [0, 1, 1, 1]) == pytest.approx((2 / 3 + 0.8) / 2)
+
+
+def test_help_and_preview_titles_show_strengths_cleanly(tmp_path, monkeypatch):
+    # the example command in --help keeps its line break instead of joining with extra spaces
+    assert "outputs/cnn_augment-none.pt \\\n" in robustness.__doc__
+    # the preview figure writes "bright 2", like the tables and chart, not "bright 2.0"
+    import matplotlib.pyplot as plt
+
+    figures = []
+    monkeypatch.setattr(plt, "close", figures.append)
+    robustness.save_preview(leaf(), str(tmp_path / "preview.png"))
+    titles = {ax.get_title() for ax in figures[0].axes}
+    assert "bright 2" in titles and "bright 2.0" not in titles
+    monkeypatch.undo()
+    plt.close(figures[0])
+
+
+@pytest.mark.parametrize("bad, message", [
+    (["--sample", "0"], "--sample must be at least 1"),
+    (["--batch-size", "0"], "--batch-size must be at least 1"),
+    (["--checkpoint", "missing.pt"], "checkpoint not found: missing.pt"),
+    (["--preview-index", "5"], "--preview-index must be between 0 and 1"),
+])
+def test_bad_input_stops_with_a_clear_message_before_any_wandb_run(
+        bad, message, checkpoint, tmp_path, monkeypatch, capsys):
+    import sys
+    import types
+
+    features = datasets.Features({
+        "image": datasets.Image(),
+        "label": datasets.ClassLabel(num_classes=39),
+    })
+    test = datasets.Dataset.from_dict({"image": [leaf(), leaf()], "label": [0, 1]},
+                                      features=features)
+    monkeypatch.setattr(robustness, "load_test_split",
+                        lambda: (test, "image", "label", [f"class {i}" for i in range(39)]))
+    started = []
+    monkeypatch.setitem(sys.modules, "wandb",
+                        types.SimpleNamespace(init=lambda **kwargs: started.append(kwargs)))
+
+    with pytest.raises(SystemExit):
+        robustness.main(["--checkpoint", str(checkpoint), "--output-dir", str(tmp_path)] + bad)
+    assert message in capsys.readouterr().err
+    assert started == []  # no run was started, so nothing is left behind in WandB
+
+
+def test_evaluation_runs_without_gradients():
+    """Robustness only needs predictions: no gradients, so it is faster and uses less memory."""
+    import torch
+    from torch import nn
+
+    from src.transforms import get_transforms
+
+    seen = []
+
+    class Recorder(nn.Module):
+        def forward(self, x):
+            seen.append(torch.is_grad_enabled())
+            return torch.zeros(len(x), 39)
+
+    features = datasets.Features({
+        "image": datasets.Image(),
+        "label": datasets.ClassLabel(num_classes=39),
+    })
+    test = datasets.Dataset.from_dict({"image": [leaf()], "label": [0]}, features=features)
+    robustness.evaluate_distortions({"r": (Recorder(), get_transforms(64))}, test, "image",
+                                    "label", [0], levels=[("clean", None)])
+    assert seen == [False]
+
+
+def test_no_leaf_rate_counts_leaf_photos_read_as_background(capsys):
+    """Class 38 plays "Background_without_leaves". A model that answers it for every photo reads
+    all 3 leaf photos as "no leaf" (100%); the real background photo is left out of the rate."""
+    import torch
+    from torch import nn
+
+    from src.transforms import get_transforms
+
+    class SaysNoLeaf(nn.Module):
+        def forward(self, x):
+            logits = torch.zeros(len(x), 39)
+            logits[:, 38] = 10.0
+            return logits
+
+    features = datasets.Features({
+        "image": datasets.Image(),
+        "label": datasets.ClassLabel(num_classes=39),
+    })
+    test = datasets.Dataset.from_dict({"image": [leaf()] * 4, "label": [0, 1, 2, 38]},
+                                      features=features)
+    models = {"nl": (SaysNoLeaf(), get_transforms(64))}
+    levels = [("clean", None), ("noise", 25)]
+    results = robustness.evaluate_distortions(models, test, "image", "label", [0, 1, 2, 3],
+                                              levels=levels, no_leaf_class=38)
+    assert list(results["no_leaf"]) == [1.0, 1.0]
+    assert list(results["accuracy"]) == [0.25, 0.25]  # only the background photo is right
+    assert "(no leaf 100%)" in capsys.readouterr().out
+
+    summary = robustness.summarise(results)
+    assert summary.loc["nl", "max_no_leaf"] == 1.0
+    assert summary.loc["nl", "clean_no_leaf"] == 1.0
+    table = robustness.markdown_table(results, min_gap=None, column="no_leaf")
+    assert "| noise | 25 | 100.0% |" in table and "**" not in table
+
+    without = robustness.evaluate_distortions(models, test, "image", "label", [0, 1, 2, 3],
+                                              levels=levels)
+    assert without["no_leaf"].isna().all()  # no class given: no rate
+    assert "max_no_leaf" not in robustness.summarise(without)

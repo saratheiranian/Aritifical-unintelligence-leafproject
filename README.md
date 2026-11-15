@@ -32,7 +32,7 @@ Partners review each other's pull requests: 1 and 2, 3 and 4, 5 and 6.
 | Data split, EDA and quality checks | Done: 38,812 train / 8,317 val / 8,318 test, stratified, seed 42; ClearML Dataset `7d1a35d50f2d4fab994f3761743d0c57`; see [docs/data_card.md](docs/data_card.md) |
 | Balanced sampler | Done: no accuracy gain on the 25% subset (88.9% vs 89.4% baseline) |
 | CNN from scratch, full data | Done: **99.0% test accuracy**, 99.99% top-5, macro F1 0.986 (20 epochs, 64 min on a MacBook GPU) |
-| Robustness tests | Done: on 7 distortions the 99% model keeps 73.2% on average; noise is the main weakness; strong augmentation drops least (see [docs/results.md](docs/results.md)) |
+| Robustness tests | Done: on 7 distortions the 99% model keeps 73.2% on average; noise is the main weakness; strong augmentation keeps the largest share of its clean accuracy (77%, against 74% for the 99% model and 59% without augmentation) (see [docs/results.md](docs/results.md)) |
 | Gradio app (local) | Done |
 | Hyperparameter sweep | To do (waiting for the KCL ClearML GPU queue) |
 | ResNet18 baseline | To do |
@@ -140,7 +140,8 @@ python -m src.robustness --checkpoint outputs/final_model.pt outputs/cnn_augment
 `evaluate` logs test accuracy, top-5 accuracy, per-class precision/recall/F1, the weakest classes
 and a confusion matrix. `robustness` measures accuracy on test images with 7 distortions (blur,
 noise, dark, bright, rotation, JPEG, zoom) at 3 strengths, for one or more models, and saves a
-results table, a summary and a chart to `outputs/robustness/` (`--sample 500` for a quick run,
+results table, a summary, a chart and how often leaf photos are read as "no leaf" (Background
+without leaves) to `outputs/robustness/` (`--sample 500` for a quick run,
 `--preview` for the distortion figure only). It also logs them to the team's Weights & Biases
 project (`src/config.py`); add `--no-wandb` to skip that.
 

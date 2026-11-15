@@ -144,7 +144,9 @@ pixels, noise standard deviation on the 0-255 scale, share of light kept (dark),
   on real field photos (10.2% vs 6.4%). Field photos combine several of these changes at once, which
   may help explain the drop from 99% to 14%. Training the final model with strong augmentation plus
   noise, for more epochs, is the natural follow-up.
-- A first run on a fixed sample of 500 test images gave the same picture within about 2 points.
+- A first run on a fixed sample of 500 test images gave the same picture: the mean over the
+  distorted levels was within 2 points for every model, though single levels differed by up to
+  4.1 points (augment-strong at bright 1.6), so single levels from a sample are less reliable.
 
 ## 9 Nov 2026: leak check (Sara)
 
