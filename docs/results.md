@@ -41,15 +41,15 @@ mistakes are confidently wrong.
   weakest classes in the test metrics.
 - **8 diseased leaves were read as healthy**, the costliest kind of mistake for a grower, for
   example Tomato Late blight read as Tomato healthy at 88%.
-- **The corn confusions look at the right place.** On both confident corn mistakes the heatmaps for
-  the chosen and for the true class sit on the same lesions: the model finds the lesions but cannot
-  tell the two diseases apart.
+- **The corn confusions look at the leaf.** On both confident corn mistakes the heatmaps for the
+  chosen and for the true class lie on the leaf around its lesions, in partly different places, not
+  on the background: the model looks at the lesions but cannot tell the two diseases apart.
 - **One confident mistake comes from the background.** For Apple healthy read as Blueberry healthy
   (98%), the evidence for the chosen class lies on the background on either side of the leaf, while
   the evidence for the true class lies on the leaf.
 - **On random photos all three models look at the lesions.** All three are correct on the 4 photos
-  and put the heat on the Esca and Septoria spots; only on the strawberry does `augment-none` spread
-  onto the background. An earlier impression that `augment-none` relies on the background came from
+  and put the heat on the Esca and Septoria spots; on the healthy strawberry all three spread some
+  heat onto the background next to the leaf. An earlier impression that `augment-none` relies on the background came from
   photos chosen by the final model and is not confirmed here; it will be measured over many images.
 - **Distortions.** The diseased tomato leaf stays correct under blur 2, dark 0.5 and zoom 0.6, but
   at noise 25 it is read as Background without leaves (50%), with the heat spread over the

@@ -150,8 +150,10 @@ project (`src/config.py`); add `--no-wandb` to skip that.
 predictions from 8 classes and the 4 most confident mistakes (each also explained for its true
 class), random photos explained by every model, and a diseased and a healthy leaf under the
 distortions of the robustness test. It also saves every mistake with its confidence and the most
-confused pairs of classes. Figures and tables go to `outputs/gradcam/` and to W&B (`--no-wandb` to
-skip).
+confused pairs of classes, measures how much of each model's heatmap falls on the leaf rather than
+the background (on random photos, with a leaf mask you can check in `gradcam_leaf_masks.png`), and
+runs a sanity check against the same model with random weights. Figures and tables go to
+`outputs/gradcam/` and to W&B (`--no-wandb` to skip).
 
 ### 5. App and deployment
 

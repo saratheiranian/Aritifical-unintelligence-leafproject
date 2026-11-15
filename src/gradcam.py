@@ -1,4 +1,4 @@
-"""Grad-CAM: which parts of a leaf photo the model used for its prediction.
+r"""Grad-CAM: which parts of a leaf photo the model used for its prediction.
 
 Grad-CAM (Selvaraju et al., 2017) takes the feature maps of the last convolutional stage, weights
 each map by how much it pushed the score of the explained class up (the average gradient), and adds
@@ -18,7 +18,19 @@ chosen independently of any model, explained by every model, when there are two 
 gradcam_distortions.png (a diseased and a healthy leaf under the blur, noise, dark and zoom levels
 of the robustness test), gradcam_examples.csv, gradcam_mistakes.csv (every mistake with its
 confidence) and gradcam_confused_pairs.csv (how often each true class was read as each wrong one).
-Without --no-wandb the figures, tables and mistake statistics are also logged to Weights & Biases.
+Two measurements turn the examples into numbers (--attention-sample photos, default 300):
+- Heat on the leaf: for random test photos, the share of each model's heatmap that falls on the
+  leaf rather than the background. The leaf is found by colour (plant hues, not the grey or bluish
+  background and shadows); photos whose mask looks implausible (under 15% or over 95% leaf) are
+  skipped and counted. All models are measured on the same photos with the same masks, so the
+  comparison between them stays fair even where a mask is imperfect. gradcam_leaf_masks.png shows
+  the masks for a visual check.
+- Sanity check (Adebayo et al., 2018): the first model's heatmaps are compared with those of the
+  same model with random weights. If Grad-CAM explains what the model learned, the two should
+  differ (low rank correlation); gradcam_sanity.png shows examples.
+Results: gradcam_attention.csv (every photo and model) and gradcam_attention_summary.csv.
+
+Without --no-wandb the figures, tables and statistics are also logged to Weights & Biases.
 
 Heatmaps use the colour-blind-friendly "inferno" colour map: bright yellow = most important,
 dark = hardly at all. Titles mark correct predictions with a tick and wrong ones with a cross, so
@@ -29,8 +41,10 @@ app can use them too.
 """
 
 import argparse
+import copy
 import os
 import textwrap
+import warnings
 from itertools import zip_longest
 
 import matplotlib
@@ -41,7 +55,10 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn.functional as F
-from PIL import Image
+from matplotlib.colors import rgb_to_hsv
+from PIL import Image, ImageFilter
+from scipy import ndimage
+from scipy.stats import spearmanr
 from torch import nn
 
 from src.config import WANDB_ENTITY, WANDB_PROJECT
@@ -54,6 +71,8 @@ SEED = 42  # same as src.data.SEED (not imported, so this module works without t
 DISPLAY_SIZE = 256  # PlantVillage photos are 256x256; models see them resized to img_size
 COLORMAP = "inferno"  # perceptually uniform and readable with colour blindness (unlike "jet")
 CONFIDENT = 0.9  # a mistake at or above this confidence counts as "confidently wrong"
+NO_LEAF_CLASS = "Background_without_leaves"  # photos without a leaf: no leaf mask possible
+LEAF_AREA_RANGE = (0.15, 0.95)  # masks outside this share of the photo are treated as failures
 
 # Robustness levels where the final model loses the most accuracy (see docs/results.md)
 DISTORTION_LEVELS = [("clean", None), ("blur", 2), ("noise", 25), ("dark", 0.5), ("zoom", 0.6)]
@@ -234,6 +253,169 @@ def summarise_mistakes(labels, preds, confidence, class_names, indices):
 
 
 # ---------------------------------------------------------------------------------------------
+# Measurements: heat on the leaf, and the sanity check
+# ---------------------------------------------------------------------------------------------
+
+
+def leaf_mask(image, size=(128, 128)):
+    """True where the photo shows the leaf, False for the background and shadows.
+
+    PlantVillage backgrounds and shadows are grey, bluish or pinkish, while leaves (healthy or
+    diseased) have green to yellow hues or strong colours. A pixel counts as leaf if its hue is
+    between 40 and 200 degrees with some saturation, or if it is strongly coloured (brown or
+    yellow lesions), unless it has the background colour read from the photo's border or is a
+    darker shade of it (a shadow). Small gaps are closed, holes inside the leaf filled, and specks
+    removed. Known limits: parts of very dark or glossy leaves can be missed, and brightly lit
+    background or a shadow with a yellowish tint can count as leaf. This errs towards keeping
+    pale lesions next to the background, which a stricter colour match removes.
+    size is (width, height), the size of the heatmap the mask is compared with."""
+    small = image.convert("RGB").resize(size, Image.Resampling.BILINEAR)
+    rgb = np.asarray(small.filter(ImageFilter.GaussianBlur(1)), dtype=np.float32) / 255
+    hsv = rgb_to_hsv(rgb)
+    hue, sat, val = hsv[..., 0] * 360, hsv[..., 1], hsv[..., 2]
+    plant_hue = (hue >= 40) & (hue <= 200) & (sat > 0.10)
+    mask = (plant_hue | (sat > 0.30)) & (val > 0.10)
+    # Coloured backgrounds (for example pink-brown paper) can pass the colour test. When most of
+    # the photo's border is not plant-coloured, the border shows the background: leave out pixels
+    # of that colour. Close-ups that fill the frame (corn) have a plant-coloured border and skip it.
+    edge = np.concatenate([rgb[:4].reshape(-1, 3), rgb[-4:].reshape(-1, 3),
+                           rgb[:, :4].reshape(-1, 3), rgb[:, -4:].reshape(-1, 3)])
+    edge_plant = np.concatenate([plant_hue[:4].ravel(), plant_hue[-4:].ravel(),
+                                 plant_hue[:, :4].ravel(), plant_hue[:, -4:].ravel()])
+    if (~edge_plant).mean() >= 0.5:
+        background = np.median(edge[~edge_plant], axis=0)
+        if background.max() - background.min() > 0.2 * background.max():
+            # Only for a coloured background: on grey ones this would also cut pale leaf parts.
+            mask &= np.linalg.norm(rgb - background, axis=-1) > 0.12
+        # A shadow is a darker copy of the background: same colour balance, lower brightness.
+        tint = rgb / np.maximum(rgb.sum(axis=-1, keepdims=True), 1e-6)
+        bg_tint = background / max(background.sum(), 1e-6)
+        shadow = (np.linalg.norm(tint - bg_tint, axis=-1) < 0.03) & (val < 0.85 * background.max())
+        mask &= ~shadow
+    mask = ndimage.binary_closing(mask, iterations=2)
+    mask = ndimage.binary_fill_holes(mask)
+    mask = ndimage.binary_opening(mask, iterations=2)
+    parts, n = ndimage.label(mask)
+    if n > 1:  # keep the leaf (and large pieces of it), drop small specks
+        sizes = ndimage.sum(mask, parts, range(1, n + 1))
+        mask = np.isin(parts, 1 + np.flatnonzero(sizes >= 0.2 * sizes.max()))
+    return mask
+
+
+def heat_on_leaf(cam, mask):
+    """Share of the heatmap that falls on the leaf (NaN if the heatmap is empty).
+
+    If the heat were spread evenly, this would equal the leaf's share of the photo."""
+    total = float(cam.sum())
+    return float(cam[mask].sum()) / total if total > 0 else np.nan
+
+
+def randomised_copy(model, seed=SEED):
+    """The same architecture with fresh random weights, for the sanity check. The original model
+    is not changed."""
+    random_model = copy.deepcopy(model)
+    torch.manual_seed(seed)
+    for module in random_model.modules():
+        if hasattr(module, "reset_parameters"):
+            module.reset_parameters()
+        if hasattr(module, "reset_running_stats"):
+            module.reset_running_stats()
+    return random_model.eval()
+
+
+def bootstrap_ci(values, n_boot=2000, seed=SEED):
+    """Mean and 95% bootstrap confidence interval (NaN values are left out)."""
+    values = np.asarray(values, dtype=float)
+    values = values[~np.isnan(values)]
+    if len(values) == 0:
+        return np.nan, np.nan, np.nan
+    rng = np.random.default_rng(seed)
+    means = values[rng.integers(0, len(values), size=(n_boot, len(values)))].mean(axis=1)
+    return float(values.mean()), float(np.percentile(means, 2.5)), float(np.percentile(means, 97.5))
+
+
+def rank_correlation(a, b, step=4):
+    """Spearman rank correlation between two heatmaps (every step-th pixel, for speed); NaN if
+    either is constant."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return float(spearmanr(a[::step, ::step].ravel(), b[::step, ::step].ravel())[0])
+
+
+def choose_attention_photos(test, image_col, labels, positions, n, size, no_leaf_class=None,
+                            seed=SEED + 2):
+    """Random photos (positions into the scanned images) with a plausible leaf mask.
+
+    Returns (chosen positions, their images, their masks, number skipped because the mask looked
+    wrong). Photos of the no-leaf class are never chosen."""
+    rng = np.random.default_rng(seed)
+    chosen, images, masks, skipped = [], [], [], 0
+    for k in rng.permutation(len(positions)):
+        if len(chosen) == n:
+            break
+        if no_leaf_class is not None and labels[k] == no_leaf_class:
+            continue
+        image = test[int(positions[k])][image_col].convert("RGB")
+        mask = leaf_mask(image, size)
+        if not LEAF_AREA_RANGE[0] <= mask.mean() <= LEAF_AREA_RANGE[1]:
+            skipped += 1
+            continue
+        chosen.append(int(k))
+        images.append(image)
+        masks.append(mask)
+    return chosen, images, masks, skipped
+
+
+def measure_attention(models, images, masks, device="cpu", batch_size=64):
+    """Heat on the leaf for every photo and model, plus the sanity check for the first model.
+
+    Returns (per_photo, example_cams): per_photo has one row per photo and model with the leaf
+    area and the heat on the leaf; the first model also appears with random weights, and its
+    rows hold the rank correlation between its trained and random heatmaps. example_cams holds
+    the first model's trained and random heatmaps of the first 4 photos, for the figure."""
+    first = next(iter(models))
+    to_measure = dict(models)
+    to_measure[f"{first} (random weights)"] = (randomised_copy(models[first][0]), models[first][1])
+    cams = {name: [] for name in to_measure}
+    for start in range(0, len(images), batch_size):
+        batch = images[start:start + batch_size]
+        for name, (model, transform) in to_measure.items():
+            cams[name].extend(explain(model, transform, batch, device)[0])
+    rows = []
+    for name in to_measure:
+        for i, (cam, mask) in enumerate(zip(cams[name], masks)):
+            if cam.shape != mask.shape:  # a model with another image size
+                mask = np.asarray(Image.fromarray(mask).resize(cam.shape[::-1], Image.Resampling.NEAREST))
+            rows.append({"photo": i, "model": name, "leaf_area": float(mask.mean()),
+                         "heat_on_leaf": heat_on_leaf(cam, mask)})
+    per_photo = pd.DataFrame(rows)
+    random_name = f"{first} (random weights)"
+    per_photo["rank_corr_with_random"] = np.nan
+    trained = per_photo["model"] == first
+    per_photo.loc[trained, "rank_corr_with_random"] = [
+        rank_correlation(a, b) for a, b in zip(cams[first], cams[random_name])]
+    examples = {"trained": cams[first][:4], "random": cams[random_name][:4]}
+    return per_photo, examples
+
+
+def summarise_attention(per_photo, first):
+    """One row per model: mean leaf area, mean heat on the leaf with its 95% interval, and the
+    paired difference from the first model (same photos) with its 95% interval."""
+    base = per_photo[per_photo["model"] == first].set_index("photo")["heat_on_leaf"]
+    rows = []
+    for name, part in per_photo.groupby("model", sort=False):
+        mean, low, high = bootstrap_ci(part["heat_on_leaf"])
+        row = {"model": name, "photos": int(part["heat_on_leaf"].notna().sum()),
+               "leaf_area": float(part["leaf_area"].mean()),
+               "heat_on_leaf": mean, "ci_low": low, "ci_high": high}
+        if name != first:
+            diff = part.set_index("photo")["heat_on_leaf"] - base
+            row["diff_vs_first"], row["diff_ci_low"], row["diff_ci_high"] = bootstrap_ci(diff)
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+# ---------------------------------------------------------------------------------------------
 # Figures
 # ---------------------------------------------------------------------------------------------
 
@@ -329,6 +511,43 @@ def plot_distortions(rows, levels, class_names, path, model_name=""):
     return _save(fig, path)
 
 
+def plot_leaf_masks(images, masks, path, n=12):
+    """The leaf masks of the first measured photos, for a visual check: the parts counted as
+    background are tinted purple."""
+    n = min(n, len(images))
+    cols = min(n, 6)
+    rows = int(np.ceil(n / cols))
+    fig, axes = plt.subplots(rows, cols, figsize=(2.2 * cols, 2.4 * rows), squeeze=False,
+                             layout="constrained")
+    _hide_ticks(axes)
+    for ax in axes.flat[n:]:
+        ax.axis("off")
+    for ax, image, mask in zip(axes.flat, images, masks):
+        photo = np.asarray(image.resize(mask.shape[::-1]), dtype=np.float32) / 255
+        photo[~mask] = photo[~mask] * 0.3 + np.array([0.6, 0.1, 0.6]) * 0.7
+        ax.imshow(photo)
+        ax.set_title(f"leaf {mask.mean():.0%}", fontsize=8)
+    fig.suptitle("Leaf masks used to measure heat on the leaf (purple = counted as background)")
+    return _save(fig, path)
+
+
+def plot_sanity(images, trained, random, path, model_name=""):
+    """Heatmaps of the trained model next to the same model with random weights."""
+    fig, axes = plt.subplots(len(images), 3, figsize=(7.5, 2.6 * len(images)), squeeze=False,
+                             layout="constrained")
+    _hide_ticks(axes)
+    for r, (image, cam_t, cam_r) in enumerate(zip(images, trained, random)):
+        axes[r, 0].imshow(image.resize((DISPLAY_SIZE, DISPLAY_SIZE)))
+        axes[r, 1].imshow(overlay(image, cam_t))
+        axes[r, 2].imshow(overlay(image, cam_r))
+        if r == 0:
+            axes[r, 0].set_title("photo", fontsize=8)
+            axes[r, 1].set_title(f"{model_name}\n(trained)", fontsize=8)
+            axes[r, 2].set_title(f"{model_name}\n(random weights)", fontsize=8)
+    fig.suptitle("Sanity check: heatmaps should change when the learned weights are removed")
+    return _save(fig, path)
+
+
 def plot_mistakes(rows, class_names, path, model_name=""):
     """Each mistake explained twice: for the wrong class the model chose and for the true class.
 
@@ -362,20 +581,28 @@ def main(argv=None):
                    help="scan a fixed random sample of this many test images (default: all 8,318)")
     p.add_argument("--n-correct", type=int, default=8, help="correct examples, one per class")
     p.add_argument("--n-wrong", type=int, default=4, help="most confident mistakes to show")
-    p.add_argument("--n-distorted", type=int, default=2, help="photos in the distortion figure")
+    p.add_argument("--n-distorted", type=int, default=2,
+                   help="photos in the distortion figure (0 = no distortion figure)")
+    p.add_argument("--attention-sample", type=int, default=300,
+                   help="random photos for the heat-on-leaf measure and the sanity check "
+                        "(0 = skip both)")
     p.add_argument("--batch-size", type=int, default=64)
     p.add_argument("--run-name", default="gradcam", help="name of the WandB run")
     p.add_argument("--output-dir", default=OUTPUT_DIR)
     p.add_argument("--no-wandb", action="store_true", help="do not log to Weights & Biases")
     args = p.parse_args(argv)
-
-    run = None
-    if not args.no_wandb:
-        import wandb
-
-        run = wandb.init(entity=WANDB_ENTITY, project=WANDB_PROJECT, name=args.run_name,
-                         job_type="eval", tags=["eval", "gradcam"], config=vars(args))
-        print(f"WandB run ID: {run.id}")
+    if args.sample is not None and args.sample < 1:
+        p.error("--sample must be at least 1")
+    if args.batch_size < 1:
+        p.error("--batch-size must be at least 1")
+    for option in ("n_correct", "n_wrong", "n_distorted", "attention_sample"):
+        if getattr(args, option) < 0:
+            p.error(f"--{option.replace('_', '-')} cannot be negative")
+    if args.n_correct == 0 and args.n_wrong == 0:
+        p.error("--n-correct and --n-wrong cannot both be 0: there would be nothing to explain")
+    missing = [path for path in args.checkpoint if not os.path.exists(path)]
+    if missing:
+        p.error(f"checkpoint not found: {', '.join(missing)}")
 
     from src import robustness  # needs the dataset library, so imported only here
 
@@ -404,7 +631,20 @@ def main(argv=None):
     if stats["mistakes"]:
         print("Most confused pairs:\n" + pairs.head(5).to_string(index=False))
     correct, wrong = choose_examples(labels, preds, confidence, args.n_correct, args.n_wrong)
+    if not correct and not wrong:
+        p.error(f"no examples to explain: {first} has no correct predictions or no mistakes of "
+                "the kind requested on these images (try other --n-correct / --n-wrong values)")
     chosen = [indices[i] for i in correct + wrong]
+
+    # Started only now that the inputs are checked and the data, models and examples are ready,
+    # so a mistake in the command does not leave a crashed or empty run in the team's project
+    run = None
+    if not args.no_wandb:
+        import wandb
+
+        run = wandb.init(entity=WANDB_ENTITY, project=WANDB_PROJECT, name=args.run_name,
+                         job_type="eval", tags=["eval", "gradcam"], config=vars(args))
+        print(f"WandB run ID: {run.id}")
     images = [test[int(i)][image_col].convert("RGB") for i in chosen]
     true = [int(labels[i]) for i in correct + wrong]
 
@@ -453,12 +693,40 @@ def main(argv=None):
                      for name, strength in DISTORTION_LEVELS]
         d_cams, d_preds, d_conf = explain(model, transform, distorted, device)
         rows.append(list(zip(distorted, d_cams, d_preds, d_conf, [true[i]] * len(distorted))))
-    figures["distortions"] = plot_distortions(
-        rows, DISTORTION_LEVELS, class_names,
-        os.path.join(args.output_dir, "gradcam_distortions.png"), first)
+    if rows:
+        figures["distortions"] = plot_distortions(
+            rows, DISTORTION_LEVELS, class_names,
+            os.path.join(args.output_dir, "gradcam_distortions.png"), first)
+
+    # 6. Heat on the leaf for every model, and the sanity check, on random photos
+    attention = None
+    if args.attention_sample:
+        no_leaf = class_names.index(NO_LEAF_CLASS) if NO_LEAF_CLASS in class_names else None
+        height, width = transform(images[0]).shape[-2:]
+        picked, photos, masks, skipped = choose_attention_photos(
+            test, image_col, labels, indices, args.attention_sample, (width, height), no_leaf)
+        if photos:
+            per_photo, examples = measure_attention(models, photos, masks, device, args.batch_size)
+            per_photo.insert(0, "test_index", [int(indices[picked[i]]) for i in per_photo["photo"]])
+            per_photo.to_csv(os.path.join(args.output_dir, "gradcam_attention.csv"), index=False)
+            attention = summarise_attention(per_photo, first)
+            attention.to_csv(os.path.join(args.output_dir, "gradcam_attention_summary.csv"),
+                             index=False)
+            sanity = bootstrap_ci(per_photo["rank_corr_with_random"])
+            print(f"Heat on the leaf ({len(photos)} random photos, {skipped} skipped because the "
+                  f"leaf mask looked wrong):\n" + attention.round(3).to_string(index=False))
+            print(f"Sanity check: rank correlation between {first} and the same model with random "
+                  f"weights {sanity[0]:.2f} (95% CI {sanity[1]:.2f} to {sanity[2]:.2f})")
+            figures["leaf_masks"] = plot_leaf_masks(
+                photos, masks, os.path.join(args.output_dir, "gradcam_leaf_masks.png"))
+            figures["sanity"] = plot_sanity(
+                photos[:4], examples["trained"], examples["random"],
+                os.path.join(args.output_dir, "gradcam_sanity.png"), first)
+        else:
+            print("Heat on the leaf: no photos with a plausible leaf mask, so nothing measured")
 
     print(table.to_string(index=False))
-    print(f"Saved {len(figures)} figure(s) and 3 tables to {args.output_dir}")
+    print(f"Saved {len(figures)} figure(s) and the tables to {args.output_dir}")
 
     if run:
         run.log({f"gradcam/{name}": wandb.Image(path) for name, path in figures.items()}
@@ -466,6 +734,13 @@ def main(argv=None):
                    "gradcam/mistakes_table": wandb.Table(dataframe=mistakes),
                    "gradcam/confused_pairs": wandb.Table(dataframe=pairs)})
         run.summary["gradcam/scanned_images"] = len(indices)
+        if attention is not None:
+            run.log({"gradcam/attention_summary": wandb.Table(dataframe=attention)})
+            for _, row in attention.iterrows():
+                run.summary[f"gradcam/heat_on_leaf/{row['model']}"] = row["heat_on_leaf"]
+            run.summary["gradcam/sanity_rank_corr"] = sanity[0]
+            run.summary["gradcam/attention_photos"] = len(photos)
+            run.summary["gradcam/attention_skipped"] = skipped
         for key, value in stats.items():
             if value is not None:
                 run.summary[f"gradcam/{key}"] = value
