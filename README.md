@@ -53,6 +53,7 @@ per-epoch numbers are in [docs/results.md](docs/results.md).
 | `src/train.py`, `src/evaluate.py` | Training with early stopping, test-set evaluation |
 | `src/robustness.py` | Accuracy on distorted test images (blur, noise, lighting, rotation, JPEG, zoom) |
 | `src/distortions.py` | The 7 image distortions used by the robustness test |
+| `src/gradcam.py` | Grad-CAM heatmaps: which parts of a leaf photo each model used for its prediction |
 | `src/split_data.py`, `src/eda.py`, `src/data_quality.py`, `src/register_dataset.py` | Split check, EDA plots, image quality and duplicate checks, ClearML dataset versioning |
 | `src/sweep.py`, `src/compare_runs.py` | Hyperparameter experiments and the results table |
 | `src/inference.py`, `app/app.py` | Prediction helper and the Gradio app |
@@ -135,6 +136,7 @@ Compare them in the ClearML web app too: select the tasks, then Compare.
 python -m src.evaluate --checkpoint outputs/best_model.pt
 python -m src.evaluate --clearml-model-id <model id> --queue <gpu-queue-name>
 python -m src.robustness --checkpoint outputs/final_model.pt outputs/cnn_augment-none.pt outputs/cnn_augment-strong.pt
+python -m src.gradcam --checkpoint outputs/final_model.pt outputs/cnn_augment-none.pt outputs/cnn_augment-strong.pt
 ```
 
 `evaluate` logs test accuracy, top-5 accuracy, per-class precision/recall/F1, the weakest classes
@@ -143,6 +145,13 @@ noise, dark, bright, rotation, JPEG, zoom) at 3 strengths, for one or more model
 results table, a summary and a chart to `outputs/robustness/` (`--sample 500` for a quick run,
 `--preview` for the distortion figure only). It also logs them to the team's Weights & Biases
 project (`src/config.py`); add `--no-wandb` to skip that.
+
+`gradcam` shows which parts of a photo each model used for its prediction: heatmaps for correct
+predictions from 8 classes and the 4 most confident mistakes (each also explained for its true
+class), random photos explained by every model, and a diseased and a healthy leaf under the
+distortions of the robustness test. It also saves every mistake with its confidence and the most
+confused pairs of classes. Figures and tables go to `outputs/gradcam/` and to W&B (`--no-wandb` to
+skip).
 
 ### 5. App and deployment
 

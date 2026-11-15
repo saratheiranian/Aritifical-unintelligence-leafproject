@@ -4,6 +4,58 @@ Running record of experiments, for the report's data, evaluation and project-man
 sections. Newest first. Runs below were tracked on app.clear.ml (project `PlantDisease`)
 while the KCL ClearML server was down.
 
+## 15 Nov 2026: Grad-CAM, where the models look (Maryam, MacBook, Apple GPU)
+
+```bash
+python -m src.gradcam --checkpoint outputs/final_model.pt outputs/cnn_augment-none.pt \
+    outputs/cnn_augment-strong.pt --run-name maryam-gradcam
+```
+
+W&B run: `bjp76wyq` (project Aritifical-unintelligence-leafproject). Grad-CAM (Selvaraju et al.,
+2017) shows how much each region of a photo pushed the prediction up (bright yellow = most, dark =
+hardly at all; colour-blind-friendly "inferno" map). The final model scanned all 8,318 test images
+(99.0% correct, 83 mistakes, the same accuracy as `src.evaluate`). Figures (not committed) in
+`outputs/gradcam/`: examples (correct predictions from 8 classes, fixed random choice, seed 42, and
+the 4 most confident mistakes), mistakes (each confident mistake explained for the chosen and the
+true class), models (4 random photos chosen without any model, explained by all three models) and
+distortions (a diseased and a healthy leaf at the robustness levels). Tables:
+`gradcam_mistakes.csv` (all 83 mistakes) and `gradcam_confused_pairs.csv`. The last feature maps
+of the CNN are 8x8 for a 128x128 input, so the heatmaps show rough regions, not exact outlines.
+
+**How sure the model is when it is wrong.** Only 9 of the 83 mistakes (11%) were at least 90%
+confident, and 20 at least 80%. The median confidence is 66.4% on mistakes against 100.0% on
+correct predictions, so low confidence is a useful warning sign, but not a complete one: some
+mistakes are confidently wrong.
+
+| Most confused pairs (true, predicted) | Mistakes |
+| --- | --- |
+| Corn: Cercospora leaf spot Gray leaf spot, read as Corn: Northern Leaf Blight | 10 |
+| Tomato: Early blight, read as Tomato: Septoria leaf spot | 7 |
+| Corn: Northern Leaf Blight, read as Corn: Cercospora leaf spot Gray leaf spot | 6 |
+| Tomato: Target Spot, read as Tomato: Spider mites Two-spotted spider mite | 5 |
+| Tomato: Early blight, read as Tomato: Late blight | 4 |
+
+- **Mistakes are mostly between diseases of the same plant.** 59 of the 83 (71%) stay within one
+  plant. The two corn leaf-spot diseases account for 16 mistakes (19%) in both directions, and
+  Tomato Early blight for 17, mostly read as Septoria leaf spot or Late blight; both match the
+  weakest classes in the test metrics.
+- **8 diseased leaves were read as healthy**, the costliest kind of mistake for a grower, for
+  example Tomato Late blight read as Tomato healthy at 88%.
+- **The corn confusions look at the right place.** On both confident corn mistakes the heatmaps for
+  the chosen and for the true class sit on the same lesions: the model finds the lesions but cannot
+  tell the two diseases apart.
+- **One confident mistake comes from the background.** For Apple healthy read as Blueberry healthy
+  (98%), the evidence for the chosen class lies on the background on either side of the leaf, while
+  the evidence for the true class lies on the leaf.
+- **On random photos all three models look at the lesions.** All three are correct on the 4 photos
+  and put the heat on the Esca and Septoria spots; only on the strawberry does `augment-none` spread
+  onto the background. An earlier impression that `augment-none` relies on the background came from
+  photos chosen by the final model and is not confirmed here; it will be measured over many images.
+- **Distortions.** The diseased tomato leaf stays correct under blur 2, dark 0.5 and zoom 0.6, but
+  at noise 25 it is read as Background without leaves (50%), with the heat spread over the
+  background. The healthy strawberry fails under blur 2 (Orange Haunglongbing, 76%) and zoom 0.6
+  (Corn healthy, 100%).
+  
 ## 12 Nov 2026: fine-tuning on field photos (PlantDoc train)
 
 `python -m src.finetune_field --checkpoint outputs/final_model.pt --plantdoc-dir data/PlantDoc`:
