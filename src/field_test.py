@@ -156,7 +156,7 @@ def main(argv=None):
     p.add_argument("--plantdoc-dir", default="data/PlantDoc/test")
     p.add_argument("--output-dir", default="outputs/field_test")
     p.add_argument("--batch-size", type=int, default=64)
-    p.add_argument("--clearml", action="store_true", help="log the results to ClearML")
+    p.add_argument("--wandb", action="store_true", help="log the results to W&B (run `wandb login` first)")
     args = p.parse_args(argv)
 
     device = get_device()
@@ -188,16 +188,16 @@ def main(argv=None):
     report_df.to_csv(os.path.join(args.output_dir, "field_report.csv"))
     pd.Series(summary).to_csv(os.path.join(args.output_dir, "field_summary.csv"), header=False)
 
-    if args.clearml:  # pragma: no cover - needs a ClearML server
-        from clearml import Task
+    if args.wandb:  # pragma: no cover - needs a W&B account
+        import wandb
 
-        from src.train import CLEARML_PROJECT
+        from src.config import WANDB_ENTITY, WANDB_PROJECT
 
-        task = Task.init(project_name=CLEARML_PROJECT, task_name="field-test", tags=["eval", "plantdoc"])
-        logger = task.get_logger()
-        for key, value in summary.items():
-            logger.report_single_value(key, value)
-        logger.report_table("Per-class metrics", "plantdoc", iteration=0, table_plot=report_df)
+        run = wandb.init(entity=WANDB_ENTITY, project=WANDB_PROJECT, name="field-test",
+                         job_type="eval", tags=["eval", "plantdoc"], config=vars(args))
+        run.summary.update(summary)
+        run.log({"per_class_metrics": wandb.Table(dataframe=report_df.reset_index(names="class"))})
+        run.finish()
     return summary
 
 
