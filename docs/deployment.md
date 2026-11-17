@@ -66,4 +66,38 @@ Command used (run from the repo root, with a leaf photo saved as `outputs/leaf.j
 
 ## Next
 
-- Deploy the Space once the teaching team confirms the deployment option.
+
+## Colab demo (17 Nov)
+
+The teaching team's GAP_ML_Tools guide gives two deployment routes instead of a Space: Colab for
+demo day (temporary public link) and Render.com for a permanent link. The Colab route works:
+
+- Notebook: `notebooks/colab_demo.ipynb`. Open it in Colab and run both cells.
+- Cell 1 clones the repo and installs `app/requirements.txt`. Cell 2 loads the model from
+  `Media1234/plant-disease-cnn` (via `HF_MODEL_REPO`) and starts the app with `share=True`.
+- Gradio prints a public `https://....gradio.live` link. It works from any network while the
+  Colab cell is running (at most about a week).
+- Tested from an iPhone on 17 Nov: a tomato leaf photo gave Tomato: Early blight (80%).
+- The example gallery and the "training images of the predicted class" are empty in Colab,
+  because `app/examples` and `app/class_examples` are made locally by `src/make_app_assets` and
+  are not in Git.
+
+## Phone test (17 Nov)
+
+The local app (`GRADIO_SERVER_NAME=0.0.0.0`) opened on an iPhone over the KCL Wi-Fi:
+
+| Test | Result |
+|---|---|
+| Layout | Fits the screen in one column |
+| Example image (grape) | Grape: Esca (Black Measles), 100% |
+| Hand photo | Background without leaves, 99.9% |
+| Batch with two photos (tomato leaf, cat) | Tomato: Early blight; Background without leaves |
+| About tab | Readable, shows the PlantDoc limitation |
+
+Wide tables do not fit on a phone: the Probabilities table and the Batch table's probability and
+"Low confidence" columns need a sideways swipe.
+
+## Next
+
+- Real-leaf photo with the phone camera.
+- Render.com for a permanent link.
