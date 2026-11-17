@@ -284,3 +284,47 @@ def test_no_leaf_rate_counts_leaf_photos_read_as_background(capsys):
                                               levels=levels)
     assert without["no_leaf"].isna().all()  # no class given: no rate
     assert "max_no_leaf" not in robustness.summarise(without)
+
+
+def test_two_model_files_with_the_same_name_are_refused(checkpoint, tmp_path, capsys):
+    """outputs/final_model.pt and outputs/new/final_model.pt would both be called final_model,
+    and one would silently replace the other, so only one model would be tested."""
+    other = tmp_path / "new"
+    other.mkdir()
+    copy = other / checkpoint.name
+    copy.write_bytes(checkpoint.read_bytes())
+    paths = [str(checkpoint), str(copy)]
+    assert robustness.duplicate_names(paths) == [checkpoint.stem]
+    assert robustness.duplicate_names([str(checkpoint)]) == []
+    with pytest.raises(ValueError, match="same name"):
+        robustness.load_models(paths, "cpu")
+    with pytest.raises(SystemExit):  # stops before loading the data or starting a WandB run
+        robustness.main(["--checkpoint", *paths, "--output-dir", str(tmp_path)])
+    assert "two model files have the same name" in capsys.readouterr().err
+
+
+def test_wandb_run_is_closed_when_the_test_fails_halfway(checkpoint, tmp_path, monkeypatch):
+    import sys
+    import types
+
+    features = datasets.Features({
+        "image": datasets.Image(),
+        "label": datasets.ClassLabel(num_classes=39),
+    })
+    test = datasets.Dataset.from_dict({"image": [leaf()] * 2, "label": [0, 1]}, features=features)
+    monkeypatch.setattr(robustness, "load_test_split",
+                        lambda: (test, "image", "label", [f"class {i}" for i in range(39)]))
+    monkeypatch.setattr(robustness, "get_device", lambda: "cpu")
+    finished = []
+    run = types.SimpleNamespace(id="abc123", url="https://wandb.ai/run", summary={},
+                                log=lambda data: None, finish=lambda: finished.append(True))
+    monkeypatch.setitem(sys.modules, "wandb", types.SimpleNamespace(init=lambda **kwargs: run))
+
+    def crash(*args, **kwargs):
+        raise RuntimeError("out of memory")
+
+    monkeypatch.setattr(robustness, "evaluate_distortions", crash)
+    with pytest.raises(RuntimeError, match="out of memory"):
+        robustness.main(["--checkpoint", str(checkpoint), "--output-dir", str(tmp_path)])
+    assert finished == [True]  # closed once, not left running
+

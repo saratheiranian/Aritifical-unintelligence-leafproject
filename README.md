@@ -33,6 +33,7 @@ Partners review each other's pull requests: 1 and 2, 3 and 4, 5 and 6.
 | Balanced sampler | Done: no accuracy gain on the 25% subset (88.9% vs 89.4% baseline) |
 | CNN from scratch, full data | Done: **99.0% test accuracy**, 99.99% top-5, macro F1 0.986 (20 epochs, 64 min on a MacBook GPU) |
 | Robustness tests | Done: on 7 distortions the 99% model keeps 73.2% on average; noise is the main weakness; strong augmentation keeps the largest share of its clean accuracy (77%, against 74% for the 99% model and 59% without augmentation) (see [docs/results.md](docs/results.md)) |
+| Grad-CAM | Done: on all 8,318 test images, 71% of the 83 mistakes are between diseases of the same plant; the 99% model puts 64% of its heatmap on the leaf, more than the same model with random weights (51% on average); it only partly passes the sanity check, so the heatmaps are a rough guide (see [docs/results.md](docs/results.md)) |
 | Gradio app (local) | Done |
 | Hyperparameter sweep | To do (waiting for the KCL ClearML GPU queue) |
 | ResNet18 baseline | To do |
@@ -82,8 +83,9 @@ Never commit `clearml.conf`, the dataset or model files (they are in `.gitignore
 
 ## Usage
 
-All commands run from the repo root. Each script is its own ClearML task (data, train, eval),
-as the brief recommends. Add `--no-clearml` to the train, evaluate and EDA scripts to run without tracking.
+All commands run from the repo root. Training, evaluation, robustness and Grad-CAM log to the
+team's Weights & Biases project (`src/config.py`); add `--no-wandb` to run them without tracking.
+The data scripts (EDA, data quality) still log to ClearML; add `--no-clearml` to skip it.
 
 ### 1. Data
 

@@ -581,3 +581,28 @@ def test_summarise_sanity_gives_one_row_per_seed():
     assert list(sanity["heat_on_leaf"]) == pytest.approx([0.45, 0.6])
     assert (sanity["ci_low"] <= sanity["rank_corr"]).all()
 
+
+def test_two_model_files_with_the_same_name_are_refused(checkpoint, tmp_path, monkeypatch, capsys):
+    other = tmp_path / "new"
+    other.mkdir()
+    copy = other / checkpoint.name
+    copy.write_bytes(checkpoint.read_bytes())
+    started, _ = fake_run_setup(monkeypatch)
+    with pytest.raises(SystemExit):
+        gradcam.main(["--checkpoint", str(checkpoint), str(copy), "--output-dir", str(tmp_path)])
+    assert "two model files have the same name" in capsys.readouterr().err
+    assert started == []
+
+
+def test_wandb_run_is_closed_when_grad_cam_fails_halfway(checkpoint, tmp_path, monkeypatch):
+    started, logged = fake_run_setup(monkeypatch)
+
+    def crash(*args, **kwargs):
+        raise RuntimeError("out of memory")
+
+    monkeypatch.setattr(gradcam, "plot_examples", crash)
+    with pytest.raises(RuntimeError, match="out of memory"):
+        gradcam.main(["--checkpoint", str(checkpoint), "--output-dir", str(tmp_path),
+                      "--n-correct", "2", "--n-wrong", "2"])
+    assert len(started) == 1 and logged["finished"]  # the run was closed, not left running
+

@@ -1,2 +1,5 @@
 [tool.ruff.lint]
 ignore = ["UP017"]  # UTC timezone availability (Python 3.11+)
+
+[tool.ruff.lint.isort]
+known-third-party = ["wandb"]  # a local wandb/ run folder would otherwise make ruff treat it as our own code

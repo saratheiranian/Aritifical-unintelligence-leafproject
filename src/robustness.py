@@ -100,8 +100,20 @@ def sample_indices(n_images, sample=None, seed=SEED):
     return sorted(int(i) for i in rng.choice(n_images, size=sample, replace=False))
 
 
+def duplicate_names(checkpoint_paths):
+    """Model names that occur more than once. Each model is named after its file name without
+    .pt, so outputs/final_model.pt and outputs/new/final_model.pt would get the same name, and
+    one would silently replace the other."""
+    names = [Path(path).stem for path in checkpoint_paths]
+    return sorted({name for name in names if names.count(name) > 1})
+
+
 def load_models(checkpoint_paths, device):
     """{model name: (model, test-time transform)}; the name is the file name without .pt."""
+    clashes = duplicate_names(checkpoint_paths)
+    if clashes:
+        raise ValueError(f"two model files have the same name: {', '.join(clashes)}. "
+                         "Rename one of them, for example final_model_v2.pt")
     models = {}
     for path in checkpoint_paths:
         model, ckpt = load_checkpoint(path, device)
@@ -269,7 +281,9 @@ def plot_results(results, path, num_classes=39):
     return path
 
 
-def main(argv=None):
+def run_robustness(argv, started):
+    """The robustness test from the command line. The W&B run, once started, is added to `started`, so that
+    main() can close it."""
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     p.add_argument("--checkpoint", nargs="+", default=["outputs/final_model.pt"],
                    help="one or more model files to compare")
@@ -291,6 +305,10 @@ def main(argv=None):
         missing = [path for path in args.checkpoint if not os.path.exists(path)]
         if missing:
             p.error(f"checkpoint not found: {', '.join(missing)}")
+        clashes = duplicate_names(args.checkpoint)
+        if clashes:
+            p.error(f"two model files have the same name: {', '.join(clashes)}. "
+                    "Rename one of them, for example final_model_v2.pt")
 
     test, image_col, label_col, class_names = load_test_split()
     if not 0 <= args.preview_index < len(test):
@@ -314,6 +332,7 @@ def main(argv=None):
         run = wandb.init(entity=WANDB_ENTITY, project=WANDB_PROJECT, name=args.run_name,
                          job_type="eval", tags=["eval", "robustness"], config=vars(args))
         print(f"WandB run ID: {run.id}")
+        started.append(run)
 
     indices = sample_indices(len(test), args.sample)
     print(f"Testing {len(models)} model(s) on {len(indices)} test images, "
@@ -349,8 +368,18 @@ def main(argv=None):
                 if column in values and pd.notna(values[column]):
                     run.summary[f"{model_name}/{column}"] = float(values[column])
         print(f"Logged to WandB run {run.id}: {run.url}")
-        run.finish()
     return results
+
+
+def main(argv=None):
+    """Closes the W&B run even if something fails halfway, so no run is left marked as running
+    in the team's project."""
+    started = []
+    try:
+        return run_robustness(argv, started)
+    finally:
+        for run in started:
+            run.finish()
 
 
 if __name__ == "__main__":

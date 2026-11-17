@@ -260,8 +260,8 @@ pixels, noise standard deviation on the 0-255 scale, share of light kept (dark),
   41.7%, and doubling the brightness to 18.7%; with strong augmentation the same changes give 75.1%
   and 52.3%. This supports the data card: mean brightness differs by class (91 to 148), so a model
   trained without colour changes can use lighting as a shortcut.
-- **The 99% model is the most robust on average (73.2%) but still loses 26 points**, and heavy JPEG
-  compression (quality 5), zoom 0.4 and dark 0.3 take it below 33%.
+- **The 99% model is the most robust on average (73.2%) but still loses 26 points**, and noise 50
+  (6.0%), heavy JPEG compression (quality 5), zoom 0.4 and dark 0.3 take it below 33%.
 - **Consistent with the field test (PlantDoc, further down):** strong augmentation also does better
   on real field photos (10.2% vs 6.4%). Field photos combine several of these changes at once, which
   may help explain the drop from 99% to 14%. Training the final model with strong augmentation plus
