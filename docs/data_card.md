@@ -58,8 +58,12 @@ section 2 and the Responsible AI paragraph.
     30°, colour jitter ±40% with a small hue shift, Gaussian blur on 30% of images. Meant to
     break the link between lighting and class (class brightness ranges from 91 to 148) and to
     make lab photos look more like field photos.
+  - `noise`: everything in `strong`, plus Gaussian noise (standard deviation drawn between 0 and
+    25 on the 0-255 scale) on half of the images. Added after the robustness test found noise to
+    be every model's main weakness: on the 25% subset it raised accuracy at noise 25 from 47% to
+    77% with no loss on clean images (see `docs/results.md`, 16 Nov).
 - Validation and test images are only resized and normalised.
-- Results of the three levels: see `docs/results.md` (4 Nov).
+- Results of the levels: see `docs/results.md` (4 Nov).
 
 ## Known limitations and biases
 
