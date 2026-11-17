@@ -64,8 +64,6 @@ Command used (run from the repo root, with a leaf photo saved as `outputs/leaf.j
 
     python -c "import time; from PIL import Image; from src.inference import Predictor; t0=time.perf_counter(); p=Predictor('outputs/final_model.pt', device='cpu'); t1=time.perf_counter(); img=Image.open('outputs/leaf.jpg').convert('RGB'); p.top_k(img,5); t2=time.perf_counter(); [p.top_k(img,5) for _ in range(20)]; t3=time.perf_counter(); print(f'Model load: {t1-t0:.2f} s'); print(f'First prediction: {t2-t1:.3f} s'); print(f'Average of 20 predictions: {(t3-t2)/20:.3f} s')"
 
-## Next
-
 
 ## Colab demo (17 Nov)
 
