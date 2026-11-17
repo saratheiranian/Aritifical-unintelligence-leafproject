@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -51,3 +52,39 @@ def test_deploy_stage(tmp_path, checkpoint):
     files = {Path(f).as_posix() for f in stage(out, [str(checkpoint)], "4.44.0")}
     assert {"app.py", "requirements.txt", "README.md", "src/inference.py", "models/cnn.pt"} <= files
     assert "sdk_version: 4.44.0" in (out / "README.md").read_text(encoding="utf-8")
+
+def test_local_sweep_carries_on_after_a_failed_variant(monkeypatch, capsys):
+    from src import sweep, train
+
+    started = []
+
+    def fake_main(argv):
+        name = argv[argv.index("--task-name") + 1]
+        started.append(name)
+        if name == "sweep-adam":
+            raise RuntimeError("out of memory")
+
+    monkeypatch.setattr(train, "main", fake_main)
+    sweep.run_local(["baseline", "adam", "dropout-0"], {"epochs": 1})
+    assert started == ["sweep-baseline", "sweep-adam", "sweep-dropout-0"]
+    assert "Failed variants: adam" in capsys.readouterr().out
+
+
+def test_sweep_survives_a_broken_wandb_connection(monkeypatch):
+    from unittest.mock import MagicMock
+
+    from src import sweep
+
+    fake_wandb = MagicMock()
+    fake_wandb.finish.side_effect = ConnectionAbortedError("service gone")
+    monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
+    sweep.close_wandb_run()  # must not raise
+
+
+def test_num_workers_is_passed_to_every_run(monkeypatch):
+    from src import sweep, train
+
+    seen = []
+    monkeypatch.setattr(train, "main", lambda argv: seen.append(argv))
+    sweep.main(["--local", "--only", "baseline", "--num-workers", "0"])
+    assert "--num-workers" in seen[0] and seen[0][seen[0].index("--num-workers") + 1] == "0"

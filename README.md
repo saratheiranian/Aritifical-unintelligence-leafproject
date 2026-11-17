@@ -32,7 +32,7 @@ Partners review each other's pull requests: 1 and 2, 3 and 4, 5 and 6.
 | Data split, EDA and quality checks | Done: 38,812 train / 8,317 val / 8,318 test, stratified, seed 42; ClearML Dataset `7d1a35d50f2d4fab994f3761743d0c57`; see [docs/data_card.md](docs/data_card.md) |
 | Balanced sampler | Done: no accuracy gain on the 25% subset (88.9% vs 89.4% baseline) |
 | CNN from scratch, full data | Done: **99.0% test accuracy**, 99.99% top-5, macro F1 0.986 (20 epochs, 64 min on a MacBook GPU) |
-| Robustness tests | Done: on 7 distortions the 99% model keeps 73.2% on average; noise is the main weakness; strong augmentation drops least (see [docs/results.md](docs/results.md)) |
+| Robustness tests | Done: on 7 distortions the 99% model keeps 73.2% on average; noise is the main weakness; strong augmentation keeps the largest share of its clean accuracy (77%, against 74% for the 99% model and 59% without augmentation) (see [docs/results.md](docs/results.md)) |
 | Gradio app (local) | Done |
 | Hyperparameter sweep | To do (waiting for the KCL ClearML GPU queue) |
 | ResNet18 baseline | To do |
@@ -52,6 +52,8 @@ per-epoch numbers are in [docs/results.md](docs/results.md).
 | `src/models.py` | `PlantCNN` (from scratch) and the ResNet18 baseline |
 | `src/train.py`, `src/evaluate.py` | Training with early stopping, test-set evaluation |
 | `src/robustness.py` | Accuracy on distorted test images (blur, noise, lighting, rotation, JPEG, zoom) |
+| `src/distortions.py` | The 7 image distortions used by the robustness test |
+| `src/gradcam.py` | Grad-CAM heatmaps: which parts of a leaf photo each model used for its prediction |
 | `src/split_data.py`, `src/eda.py`, `src/data_quality.py`, `src/register_dataset.py` | Split check, EDA plots, image quality and duplicate checks, ClearML dataset versioning |
 | `src/sweep.py`, `src/compare_runs.py` | Hyperparameter experiments and the results table |
 | `src/inference.py`, `app/app.py` | Prediction helper and the Gradio app |
@@ -131,16 +133,28 @@ Compare them in the ClearML web app too: select the tasks, then Compare.
 ### 4. Evaluate
 
 ```bash
-python -m src.evaluate --checkpoint outputs/best_model.pt
-python -m src.evaluate --clearml-model-id <model id> --queue <gpu-queue-name>
+python -m src.evaluate --checkpoint outputs/best_model.pt              # logs to W&B
+python -m src.evaluate --checkpoint outputs/best_model.pt --no-wandb   # nothing logged online
 python -m src.robustness --checkpoint outputs/final_model.pt outputs/cnn_augment-none.pt outputs/cnn_augment-strong.pt
+python -m src.gradcam --checkpoint outputs/final_model.pt outputs/cnn_augment-none.pt outputs/cnn_augment-strong.pt
 ```
 
 `evaluate` logs test accuracy, top-5 accuracy, per-class precision/recall/F1, the weakest classes
 and a confusion matrix. `robustness` measures accuracy on test images with 7 distortions (blur,
 noise, dark, bright, rotation, JPEG, zoom) at 3 strengths, for one or more models, and saves a
-results table, a summary and a chart to `outputs/robustness/` (`--sample 500` for a quick run,
-`--preview` for the distortion figure only).
+results table, a summary, a chart and how often leaf photos are read as "no leaf" (Background
+without leaves) to `outputs/robustness/` (`--sample 500` for a quick run,
+`--preview` for the distortion figure only). It also logs them to the team's Weights & Biases
+project (`src/config.py`); add `--no-wandb` to skip that.
+
+`gradcam` shows which parts of a photo each model used for its prediction: heatmaps for correct
+predictions from 8 classes and the 4 most confident mistakes (each also explained for its true
+class), random photos explained by every model, and a diseased and a healthy leaf under the
+distortions of the robustness test. It also saves every mistake with its confidence and the most
+confused pairs of classes, measures how much of each model's heatmap falls on the leaf rather than
+the background (on random photos, with a leaf mask you can check in `gradcam_leaf_masks.png`), and
+runs a sanity check against the same model with random weights. Figures and tables go to
+`outputs/gradcam/` and to W&B (`--no-wandb` to skip).
 
 ### 5. App and deployment
 

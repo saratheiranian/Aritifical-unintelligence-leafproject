@@ -8,6 +8,7 @@ import torch
 from torch.utils.data import DataLoader, TensorDataset
 
 from src import evaluate
+from src.config import WANDB_ENTITY, WANDB_PROJECT
 from src.evaluate import load_checkpoint, plot_confusion_matrix, predict
 
 CLASS_NAMES = [f"Plant{i}___Disease_{i}" for i in range(39)]
@@ -58,9 +59,10 @@ def test_plot_confusion_matrix_writes_png(tmp_path):
 
 
 def test_main_writes_report_and_confusion_matrix(checkpoint, tmp_path, fake_loaders):
-    result = evaluate.main(["--checkpoint", str(checkpoint), "--no-clearml", "--output-dir", str(tmp_path)])
-    assert set(result) == {"accuracy", "top5_accuracy"}
+    result = evaluate.main(["--checkpoint", str(checkpoint), "--no-wandb", "--output-dir", str(tmp_path)])
+    assert set(result) == {"accuracy", "top5_accuracy", "macro_f1"}
     assert 0.0 <= result["accuracy"] <= result["top5_accuracy"] <= 1.0
+    assert 0.0 <= result["macro_f1"] <= 1.0
     assert (tmp_path / "test_report.csv").exists()
     assert (tmp_path / "confusion_matrix.png").exists()
     # evaluation must use the image size the model was trained with, and no augmentation
@@ -68,17 +70,46 @@ def test_main_writes_report_and_confusion_matrix(checkpoint, tmp_path, fake_load
     assert fake_loaders["augment"] is False
 
 
-def test_main_logs_to_clearml_and_can_run_remotely(checkpoint, tmp_path, fake_loaders, monkeypatch):
-    fake_clearml = MagicMock()
-    fake_clearml.InputModel.return_value.get_local_copy.return_value = str(checkpoint)
-    monkeypatch.setitem(sys.modules, "clearml", fake_clearml)
+def test_main_logs_to_wandb(checkpoint, tmp_path, fake_loaders, monkeypatch):
+    fake_wandb = MagicMock()
+    monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
+    run = fake_wandb.init.return_value
+    run.summary = {}  # a real dict, so we can check the exact values written to it
 
-    evaluate.main(["--clearml-model-id", "abc123", "--queue", "gpu", "--output-dir", str(tmp_path)])
+    result = evaluate.main(["--checkpoint", str(checkpoint), "--output-dir", str(tmp_path)])
 
-    task = fake_clearml.Task.init.return_value
-    task.execute_remotely.assert_called_once_with(queue_name="gpu")
-    fake_clearml.InputModel.assert_called_once_with(model_id="abc123")
-    logger = task.get_logger.return_value
-    assert logger.report_single_value.call_count == 2  # accuracy, top-5 accuracy
-    assert logger.report_table.call_count == 2  # per-class metrics, weakest classes
-    assert logger.report_matplotlib_figure.call_count == 1
+    init_kwargs = fake_wandb.init.call_args.kwargs
+    assert init_kwargs["entity"] == WANDB_ENTITY
+    assert init_kwargs["project"] == WANDB_PROJECT
+    logged = run.log.call_args.args[0]
+    assert set(logged) == {"test/per_class", "test/weakest_classes", "test/confusion_matrix"}
+    # the summary holds exactly the numbers main() returns
+    assert run.summary == {
+        "test_accuracy": result["accuracy"],
+        "test_top5_accuracy": result["top5_accuracy"],
+        "test_macro_f1": result["macro_f1"],
+    }
+    run.finish.assert_called_once()
+
+
+def test_main_finishes_wandb_run_when_evaluation_fails(checkpoint, tmp_path, monkeypatch):
+    fake_wandb = MagicMock()
+    monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
+
+    def broken_make_loaders(**kwargs):
+        raise RuntimeError("dataset not available")
+
+    monkeypatch.setattr(evaluate, "make_loaders", broken_make_loaders)
+
+    with pytest.raises(RuntimeError, match="dataset not available"):
+        evaluate.main(["--checkpoint", str(checkpoint), "--output-dir", str(tmp_path)])
+    fake_wandb.init.return_value.finish.assert_called_once()
+
+
+def test_old_no_clearml_flag_still_turns_logging_off(checkpoint, tmp_path, fake_loaders, monkeypatch):
+    fake_wandb = MagicMock()
+    monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
+
+    evaluate.main(["--checkpoint", str(checkpoint), "--no-clearml", "--output-dir", str(tmp_path)])
+
+    fake_wandb.init.assert_not_called()

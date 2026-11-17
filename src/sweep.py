@@ -6,7 +6,8 @@ Two modes:
 
       python -m src.sweep --base-task-id <task id> --queue <gpu-queue-name>
 
-  local: run each variant here, one after the other (slow without a GPU).
+  local: run each variant here, one after the other (slow without a GPU). Runs are logged to
+  W&B, so run `wandb login` first. A variant that crashes is reported and skipped.
 
       python -m src.sweep --local --subset 0.25 --epochs 5
 
@@ -75,11 +76,34 @@ def run_remote(names, base_task_id, queue, shared):
 def run_local(names, shared):
     from src import train
 
+    failed = []
     for name in names:
         overrides = {**shared, **EXPERIMENTS[name]}
         argv = to_cli(overrides) + ["--task-name", f"sweep-{name}", "--tags", "sweep", name]
         print(f"\n=== {name}: {' '.join(argv)}")
-        train.main(argv)
+        # one crashed variant should not lose the rest of an overnight sweep
+        try:
+            train.main(argv)
+        except Exception as err:  # noqa: BLE001 - any crash should skip just this variant
+            print(f"!!! {name} failed: {err!r}")
+            failed.append(name)
+            close_wandb_run()
+    if failed:
+        print(f"\nFailed variants: {' '.join(failed)}")
+
+
+def close_wandb_run():
+    """Mark a run that crashed part-way as failed, so compare_runs.py leaves it out."""
+    try:
+        import wandb
+    except ImportError:
+        return
+    if wandb.run is None:
+        return
+    try:
+        wandb.finish(exit_code=1)
+    except Exception as err:  # noqa: BLE001 - a broken W&B connection must not end the sweep
+        print(f"!!! could not close the W&B run: {err!r}")
 
 
 def main(argv=None):
@@ -90,9 +114,12 @@ def main(argv=None):
     p.add_argument("--local", action="store_true")
     p.add_argument("--subset", type=float, default=None, help="override the training subset")
     p.add_argument("--epochs", type=int, default=None, help="override the number of epochs")
+    p.add_argument("--num-workers", type=int, default=None,
+                   help="data loading processes per run; 0 uses the least memory")
     args = p.parse_args(argv)
 
-    shared = {k: v for k, v in {"subset": args.subset, "epochs": args.epochs}.items() if v is not None}
+    options = {"subset": args.subset, "epochs": args.epochs, "num_workers": args.num_workers}
+    shared = {k: v for k, v in options.items() if v is not None}
     if args.local:
         run_local(args.only, shared)
     elif args.base_task_id and args.queue:

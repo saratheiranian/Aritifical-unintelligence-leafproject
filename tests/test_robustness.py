@@ -1,55 +1,25 @@
-import numpy as np
-import pytest
-from PIL import Image
+"""Tests for src/robustness.py. It loads the dataset through src.data, so the whole module is
+skipped when the dataset library is missing. The distortions themselves are tested in
+test_distortions.py, which does not need it."""
 
-from src import robustness
+import matplotlib.pyplot as plt
+import pandas as pd
+import pytest
 
 datasets = pytest.importorskip("datasets")
 
-
-def leaf(width=96, height=72):
-    """A small fake leaf photo: a green ellipse with a brown spot on a beige background."""
-    image = Image.new("RGB", (width, height), (200, 190, 170))
-    pixels = np.asarray(image).copy()
-    yy, xx = np.mgrid[:height, :width]
-    inside = ((xx - width / 2) / (width / 3)) ** 2 + ((yy - height / 2) / (height / 3)) ** 2 < 1
-    pixels[inside] = (60, 140, 50)
-    return Image.fromarray(pixels)
+# imported after the skip check on purpose: src.robustness needs the dataset library
+from src import robustness
+from tests.test_distortions import leaf
 
 
-@pytest.mark.parametrize("name", list(robustness.DISTORTIONS))
-def test_every_distortion_keeps_size_and_colour_mode(name):
-    image = leaf()
-    for strength in robustness.DISTORTIONS[name][1]:
-        out = robustness.apply_distortion(image, name, strength)
-        assert out.size == image.size
-        assert out.mode == "RGB"
-
-
-def test_clean_returns_the_image_unchanged():
-    image = leaf()
-    assert robustness.apply_distortion(image, "clean", None) is image
-
-
-def test_noise_is_repeatable_and_depends_on_the_seed():
-    image = leaf()
-    first = np.asarray(robustness.apply_distortion(image, "noise", 25, seed=1))
-    again = np.asarray(robustness.apply_distortion(image, "noise", 25, seed=1))
-    other = np.asarray(robustness.apply_distortion(image, "noise", 25, seed=2))
-    assert (first == again).all()
-    assert (first != other).any()
-
-
-def test_dark_and_bright_change_brightness_in_the_right_direction():
-    image = leaf()
-    mean = np.asarray(image).mean()
-    assert np.asarray(robustness.apply_distortion(image, "dark", 0.5)).mean() < mean
-    assert np.asarray(robustness.apply_distortion(image, "bright", 1.5)).mean() > mean
-
-
-def test_rotation_fills_corners_with_the_background_colour():
-    rotated = np.asarray(robustness.apply_distortion(leaf(), "rotation", 30))
-    assert tuple(rotated[0, 0]) != (0, 0, 0)
+def fake_results(rows):
+    """Results table in the format of evaluate_distortions from (model, distortion, strength,
+    accuracy) tuples."""
+    return pd.DataFrame(
+        [{"model": m, "distortion": d, "strength": s, "accuracy": a, "macro_f1": a}
+         for m, d, s, a in rows]
+    )
 
 
 def test_levels_start_with_clean_and_cover_every_strength():
@@ -65,6 +35,35 @@ def test_sample_indices_is_fixed_and_sorted():
     assert sample == robustness.sample_indices(100, sample=20)
 
 
+def test_summary_reports_share_of_clean_accuracy_kept():
+    # a starts higher but falls further in points; b keeps a larger share of what it had
+    results = fake_results([
+        ("a", "clean", None, 0.9), ("a", "blur", 1, 0.6),
+        ("b", "clean", None, 0.6), ("b", "blur", 1, 0.45),
+    ])
+    summary = robustness.summarise(results)
+    assert summary.loc["a", "kept"] == pytest.approx(0.6 / 0.9)
+    assert summary.loc["b", "kept"] == pytest.approx(0.75)
+    assert summary.loc["a", "drop"] == pytest.approx(0.3)
+
+
+def test_markdown_table_bolds_only_clear_winners():
+    results = fake_results([
+        ("a", "clean", None, 0.99), ("b", "clean", None, 0.80),  # 19 points: bold
+        ("a", "noise", 25, 0.427), ("b", "noise", 25, 0.492),    # 6.5 points: bold
+        ("a", "blur", 1, 0.477), ("b", "blur", 1, 0.492),        # 1.5 points: no bold
+        ("a", "zoom", 0.4, 0.30), ("b", "zoom", 0.4, 0.35),      # exactly 5 points: bold
+    ])
+    lines = robustness.markdown_table(results).splitlines()
+    assert lines[0] == "| Distortion | Strength | a | b |"
+    rows = {tuple(line.split(" | ")[:2]): line for line in lines[2:]}
+    assert rows[("| clean", "-")] == "| clean | - | **99.0%** | 80.0% |"
+    assert rows[("| noise", "25")] == "| noise | 25 | 42.7% | **49.2%** |"
+    assert rows[("| blur", "1")] == "| blur | 1 | 47.7% | 49.2% |"
+    assert "**35.0%**" in rows[("| zoom", "0.4")]
+    assert len(lines) == 2 + 4  # levels that were not tested are left out
+
+
 def test_evaluate_summarise_and_plot(checkpoint, tmp_path):
     features = datasets.Features({
         "image": datasets.Image(),
@@ -76,7 +75,7 @@ def test_evaluate_summarise_and_plot(checkpoint, tmp_path):
     models = robustness.load_models([str(checkpoint)], "cpu")
     levels = [("clean", None), ("blur", 2), ("noise", 25)]
     results = robustness.evaluate_distortions(
-        models, test, "image", "label", 39, list(range(6)), batch_size=4, levels=levels
+        models, test, "image", "label", list(range(6)), batch_size=4, levels=levels
     )
     assert len(results) == len(levels)
     assert results["accuracy"].between(0, 1).all()
@@ -86,8 +85,202 @@ def test_evaluate_summarise_and_plot(checkpoint, tmp_path):
     assert summary.loc["cnn", "worst_case"] in {"blur 2", "noise 25"}
 
     full = robustness.evaluate_distortions(
-        models, test, "image", "label", 39, [0, 1], batch_size=2
+        models, test, "image", "label", [0, 1], batch_size=2
     )
+    figures_before = set(plt.get_fignums())
     path = tmp_path / "chart.png"
-    robustness.plot_results(full, str(path))
+    assert robustness.plot_results(full, str(path)) == str(path)
     assert path.exists()
+    assert set(plt.get_fignums()) == figures_before  # the figure was closed
+
+
+def test_main_logs_to_wandb(checkpoint, tmp_path, monkeypatch):
+    """main() with a fake dataset and a fake wandb, so no download or account is needed."""
+    import sys
+    import types
+
+    features = datasets.Features({
+        "image": datasets.Image(),
+        "label": datasets.ClassLabel(num_classes=39),
+    })
+    test = datasets.Dataset.from_dict({"image": [leaf()] * 2, "label": [0, 1]}, features=features)
+    names = [f"class {i}" for i in range(38)] + ["Background_without_leaves"]
+    monkeypatch.setattr(robustness, "load_test_split", lambda: (test, "image", "label", names))
+    monkeypatch.setattr(robustness, "get_device", lambda: "cpu")
+
+    logged = {}
+    run = types.SimpleNamespace(id="abc123", url="https://wandb.ai/run", summary={},
+                                log=logged.update, finish=lambda: logged.update(finished=True))
+    fake_wandb = types.SimpleNamespace(
+        init=lambda **kwargs: logged.update(init=kwargs) or run,
+        Table=lambda dataframe: dataframe,
+        Image=lambda path: path,
+    )
+    monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
+
+    robustness.main(["--checkpoint", str(checkpoint), "--output-dir", str(tmp_path)])
+    assert logged["init"]["project"] == robustness.WANDB_PROJECT
+    assert {"robustness/results", "robustness/summary", "robustness/accuracy_chart"} <= set(logged)
+    assert "cnn/kept" in run.summary
+    assert logged["finished"]
+    assert (tmp_path / "robustness_table.md").exists()
+    assert (tmp_path / "robustness_no_leaf_table.md").exists()
+    assert "cnn/max_no_leaf" in run.summary
+
+
+def test_preview_does_not_start_a_wandb_run(tmp_path, monkeypatch):
+    """--preview saves the distortion figure only; it must not leave an empty run in WandB."""
+    import sys
+    import types
+
+    features = datasets.Features({
+        "image": datasets.Image(),
+        "label": datasets.ClassLabel(num_classes=39),
+    })
+    test = datasets.Dataset.from_dict({"image": [leaf()], "label": [0]}, features=features)
+    monkeypatch.setattr(robustness, "load_test_split",
+                        lambda: (test, "image", "label", [f"class {i}" for i in range(39)]))
+    started = []
+    fake_wandb = types.SimpleNamespace(init=lambda **kwargs: started.append(kwargs))
+    monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
+
+    assert robustness.main(["--preview", "--output-dir", str(tmp_path)]) is None
+    assert started == []  # no run was started
+    assert (tmp_path / "distortions_preview.png").exists()
+
+
+def test_macro_f1_ignores_classes_missing_from_the_sample():
+    """A sample with 2 of the 39 classes, all predicted correctly, must score 1.0, not 2/39."""
+    import torch
+    from torch import nn
+
+    from src.transforms import get_transforms
+
+    class AlwaysRight(nn.Module):
+        """Predicts class 0 for the first image of a batch and class 1 for the second."""
+
+        def forward(self, x):
+            logits = torch.zeros(len(x), 39)
+            logits[torch.arange(len(x)), torch.arange(len(x)) % 2] = 10.0
+            return logits
+
+    features = datasets.Features({
+        "image": datasets.Image(),
+        "label": datasets.ClassLabel(num_classes=39),
+    })
+    test = datasets.Dataset.from_dict({"image": [leaf(), leaf()], "label": [0, 1]},
+                                      features=features)
+    models = {"right": (AlwaysRight(), get_transforms(64))}
+    results = robustness.evaluate_distortions(models, test, "image", "label", [0, 1],
+                                              batch_size=2, levels=[("clean", None)])
+    assert results.loc[0, "accuracy"] == 1.0
+    assert results.loc[0, "macro_f1"] == pytest.approx(1.0)
+    assert robustness.macro_f1([0, 0, 1, 1], [0, 1, 1, 1]) == pytest.approx((2 / 3 + 0.8) / 2)
+
+
+def test_help_and_preview_titles_show_strengths_cleanly(tmp_path, monkeypatch):
+    # the example command in --help keeps its line break instead of joining with extra spaces
+    assert "outputs/cnn_augment-none.pt \\\n" in robustness.__doc__
+    # the preview figure writes "bright 2", like the tables and chart, not "bright 2.0"
+    import matplotlib.pyplot as plt
+
+    figures = []
+    monkeypatch.setattr(plt, "close", figures.append)
+    robustness.save_preview(leaf(), str(tmp_path / "preview.png"))
+    titles = {ax.get_title() for ax in figures[0].axes}
+    assert "bright 2" in titles and "bright 2.0" not in titles
+    monkeypatch.undo()
+    plt.close(figures[0])
+
+
+@pytest.mark.parametrize("bad, message", [
+    (["--sample", "0"], "--sample must be at least 1"),
+    (["--batch-size", "0"], "--batch-size must be at least 1"),
+    (["--checkpoint", "missing.pt"], "checkpoint not found: missing.pt"),
+    (["--preview-index", "5"], "--preview-index must be between 0 and 1"),
+])
+def test_bad_input_stops_with_a_clear_message_before_any_wandb_run(
+        bad, message, checkpoint, tmp_path, monkeypatch, capsys):
+    import sys
+    import types
+
+    features = datasets.Features({
+        "image": datasets.Image(),
+        "label": datasets.ClassLabel(num_classes=39),
+    })
+    test = datasets.Dataset.from_dict({"image": [leaf(), leaf()], "label": [0, 1]},
+                                      features=features)
+    monkeypatch.setattr(robustness, "load_test_split",
+                        lambda: (test, "image", "label", [f"class {i}" for i in range(39)]))
+    started = []
+    monkeypatch.setitem(sys.modules, "wandb",
+                        types.SimpleNamespace(init=lambda **kwargs: started.append(kwargs)))
+
+    with pytest.raises(SystemExit):
+        robustness.main(["--checkpoint", str(checkpoint), "--output-dir", str(tmp_path)] + bad)
+    assert message in capsys.readouterr().err
+    assert started == []  # no run was started, so nothing is left behind in WandB
+
+
+def test_evaluation_runs_without_gradients():
+    """Robustness only needs predictions: no gradients, so it is faster and uses less memory."""
+    import torch
+    from torch import nn
+
+    from src.transforms import get_transforms
+
+    seen = []
+
+    class Recorder(nn.Module):
+        def forward(self, x):
+            seen.append(torch.is_grad_enabled())
+            return torch.zeros(len(x), 39)
+
+    features = datasets.Features({
+        "image": datasets.Image(),
+        "label": datasets.ClassLabel(num_classes=39),
+    })
+    test = datasets.Dataset.from_dict({"image": [leaf()], "label": [0]}, features=features)
+    robustness.evaluate_distortions({"r": (Recorder(), get_transforms(64))}, test, "image",
+                                    "label", [0], levels=[("clean", None)])
+    assert seen == [False]
+
+
+def test_no_leaf_rate_counts_leaf_photos_read_as_background(capsys):
+    """Class 38 plays "Background_without_leaves". A model that answers it for every photo reads
+    all 3 leaf photos as "no leaf" (100%); the real background photo is left out of the rate."""
+    import torch
+    from torch import nn
+
+    from src.transforms import get_transforms
+
+    class SaysNoLeaf(nn.Module):
+        def forward(self, x):
+            logits = torch.zeros(len(x), 39)
+            logits[:, 38] = 10.0
+            return logits
+
+    features = datasets.Features({
+        "image": datasets.Image(),
+        "label": datasets.ClassLabel(num_classes=39),
+    })
+    test = datasets.Dataset.from_dict({"image": [leaf()] * 4, "label": [0, 1, 2, 38]},
+                                      features=features)
+    models = {"nl": (SaysNoLeaf(), get_transforms(64))}
+    levels = [("clean", None), ("noise", 25)]
+    results = robustness.evaluate_distortions(models, test, "image", "label", [0, 1, 2, 3],
+                                              levels=levels, no_leaf_class=38)
+    assert list(results["no_leaf"]) == [1.0, 1.0]
+    assert list(results["accuracy"]) == [0.25, 0.25]  # only the background photo is right
+    assert "(no leaf 100%)" in capsys.readouterr().out
+
+    summary = robustness.summarise(results)
+    assert summary.loc["nl", "max_no_leaf"] == 1.0
+    assert summary.loc["nl", "clean_no_leaf"] == 1.0
+    table = robustness.markdown_table(results, min_gap=None, column="no_leaf")
+    assert "| noise | 25 | 100.0% |" in table and "**" not in table
+
+    without = robustness.evaluate_distortions(models, test, "image", "label", [0, 1, 2, 3],
+                                              levels=levels)
+    assert without["no_leaf"].isna().all()  # no class given: no rate
+    assert "max_no_leaf" not in robustness.summarise(without)

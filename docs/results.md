@@ -4,6 +4,127 @@ Running record of experiments, for the report's data, evaluation and project-man
 sections. Newest first. Runs below were tracked on app.clear.ml (project `PlantDisease`)
 while the KCL ClearML server was down.
 
+## 15 Nov 2026: Grad-CAM, where the models look (Maryam, MacBook, Apple GPU)
+
+```bash
+python -m src.gradcam --checkpoint outputs/final_model.pt outputs/cnn_augment-none.pt \
+    outputs/cnn_augment-strong.pt --attention-sample 1000 --run-name maryam-gradcam
+```
+
+W&B run: `7hnz7t1s` (project Aritifical-unintelligence-leafproject). Grad-CAM (Selvaraju et al.,
+2017) shows how much each region of a photo pushed the prediction up (bright yellow = most, dark =
+hardly at all; colour-blind-friendly "inferno" map). The final model scanned all 8,318 test images
+(99.0% correct, 83 mistakes, the same accuracy as `src.evaluate`). Figures (not committed) in
+`outputs/gradcam/`: examples (correct predictions from 8 classes, fixed random choice, seed 42, and
+the 4 most confident mistakes), mistakes (each confident mistake explained for the chosen and the
+true class), models (4 random photos chosen without any model, explained by all three models) and
+distortions (a diseased and a healthy leaf at the robustness levels). Tables:
+`gradcam_mistakes.csv` (all 83 mistakes), `gradcam_confused_pairs.csv`, `gradcam_attention.csv`
+(heat on the leaf per photo and model), `gradcam_attention_summary.csv` and
+`gradcam_sanity_summary.csv`. The last feature maps
+of the CNN are 8x8 for a 128x128 input, so the heatmaps show rough regions, not exact outlines.
+
+**How sure the model is when it is wrong.** Only 9 of the 83 mistakes (11%) were at least 90%
+confident, and 20 at least 80%. The median confidence is 66.4% on mistakes against 100.0% on
+correct predictions, so low confidence is a useful warning sign, but not a complete one: some
+mistakes are confidently wrong.
+
+| Most confused pairs (true, predicted) | Mistakes |
+| --- | --- |
+| Corn: Cercospora leaf spot Gray leaf spot, read as Corn: Northern Leaf Blight | 10 |
+| Tomato: Early blight, read as Tomato: Septoria leaf spot | 7 |
+| Corn: Northern Leaf Blight, read as Corn: Cercospora leaf spot Gray leaf spot | 6 |
+| Tomato: Target Spot, read as Tomato: Spider mites Two-spotted spider mite | 5 |
+| Tomato: Early blight, read as Tomato: Late blight | 4 |
+
+- **Mistakes are mostly between diseases of the same plant.** 59 of the 83 (71%) stay within one
+  plant. The two corn leaf-spot diseases account for 16 mistakes (19%) in both directions, and
+  Tomato Early blight for 17, mostly read as Septoria leaf spot or Late blight; both match the
+  weakest classes in the test metrics.
+- **8 diseased leaves were read as healthy**, the costliest kind of mistake for a grower, for
+  example Tomato Late blight read as Tomato healthy at 88%.
+- **The corn confusions look at the leaf.** On both confident corn mistakes the heatmaps for the
+  chosen and for the true class lie on the leaf around its lesions, in partly different places, not
+  on the background: the model looks at the lesions but cannot tell the two diseases apart.
+- **One confident mistake comes from the background.** For Apple healthy read as Blueberry healthy
+  (98%), the evidence for the chosen class lies on the background on either side of the leaf, while
+  the evidence for the true class lies on the leaf.
+- **On random photos all three models look at the lesions.** All three are correct on the 4 photos
+  and put the heat on the Esca and Septoria spots; on the healthy strawberry all three spread some
+  heat onto the background next to the leaf. Four photos cannot show a difference between the
+  models, so it is measured over 1,000 photos below.
+- **Distortions.** The diseased tomato leaf stays correct under blur 2, dark 0.5 and zoom 0.6, but
+  at noise 25 it is read as Background without leaves (50%), with the heat spread over the
+  background. The healthy strawberry fails under blur 2 (Orange Haunglongbing, 76%) and zoom 0.6
+  (Corn healthy, 100%).
+
+**Heat on the leaf, over 1,000 random photos.** For each photo a leaf mask separates the leaf from
+the background and its shadow by colour (`gradcam_leaf_masks.png` shows 12 of them), and the share
+of the Grad-CAM heat that falls on the leaf is measured for every model. The photos are drawn at
+random from the test set, without the Background without leaves class; 7 more were skipped because
+their mask covered less than 15% or more than 95% of the photo. 95% intervals come from 2,000
+bootstrap resamples of the photos; the differences are paired (same photos, same masks).
+
+| Model | Heat on the leaf | 95% interval | Difference from final_model (points) |
+| --- | --- | --- | --- |
+| final_model | 64.4% | 63.4 to 65.4% | |
+| augment-strong | 61.4% | 60.1 to 62.8% | -3.0 (-3.9 to -2.1) |
+| augment-none | 59.0% | 57.7 to 60.3% | -5.4 (-6.1 to -4.7) |
+| final_model with random weights, 5 initialisations | 37.6 to 55.6% (mean 51.2%) | | -8.7 to -26.8 |
+
+The leaf covers 49.1% of these photos on average. The trained-model numbers are reproducible: on a
+300-photo trial run, Media got exactly the same heat on the leaf for all three models on a Windows
+CPU as on the MacBook GPU.
+
+- **All three trained models put more heat on the leaf than any random model.** The same network
+  with random weights puts 54 to 56% of its heat on the leaf for four of the five initialisations
+  (37.6% for the fifth), a little above the leaf's share of the photo (49.1%), probably because
+  even random filters react more to the leaf's texture and contrast than to the plain background.
+  The fair baseline is therefore the random model, not the leaf's area. The trained final model
+  puts 64.4% on the leaf, 8.7 to 26.8 points more than the random models, and augment-none (59.0%)
+  and augment-strong (61.4%) are also above all five.
+- **About a third of the heat still falls outside the mask.** Part of it is the method: the 8x8
+  heatmap is blurred when enlarged to 128x128, so heat on the leaf edge spills onto the background.
+  Part is the mask (see the limits below), and part may be real use of the background, as in the
+  Apple healthy mistake above. This measure cannot separate the three.
+- **Without augmentation the model puts the least heat on the leaf** (5.4 points below the final
+  model), and strong augmentation is between the two (3.0 points below). This fits the robustness
+  test, where the model without augmentation depends most on lighting, but the gaps are small: all
+  three models look mostly at the leaf, and each was trained only once. The final model also had
+  more data and epochs, so only augment-none against augment-strong (2.4 points; no interval was
+  computed for this pair) isolates the effect of augmentation.
+
+**Sanity check: does the heatmap depend on what the model learned?** Some explanation methods
+give nearly the same picture for a trained and an untrained model, because they mostly trace edges
+in the photo (Adebayo et al., 2018). Here the final model's heatmaps were compared with those of the
+same network with random weights, on the same 1,000 photos, for 5 random initialisations (one row
+each in `gradcam_sanity_summary.csv`; `gradcam_sanity.png` shows 4 photos for the first). The
+random weights are drawn on the CPU, so every machine gets the same random models.
+
+| Random initialisation (seed) | 42 | 43 | 44 | 45 | 46 |
+| --- | --- | --- | --- | --- | --- |
+| Rank correlation with the trained heatmap | 0.31 | 0.27 | -0.21 | 0.22 | 0.23 |
+| Heat on the leaf | 54.5% | 55.6% | 37.6% | 54.1% | 54.4% |
+
+The rank correlation is 0.17 on average, from -0.21 to 0.31 (each with a 95% interval of about
++-0.02). **Grad-CAM only partly passes this check.** A correlation of 0.3 or less means most of the
+heatmap's ordering changes when the weights are random, so the heatmaps do reflect what the model
+learned. But for four of the five initialisations the two are weakly related (0.22 to 0.31): part
+of the heatmap follows the photo itself, probably the leaf's texture and contrast, as the random
+models' heat on the leaf also suggests. The heatmaps should therefore be read as a rough guide to
+where the model looks, not as proof of what it uses. An earlier version of this check used a
+single random initialisation drawn on the MacBook GPU and gave 0.05 ("almost unrelated"); in her
+review Media got 0.32 for the same seed on a CPU. The cause was that the GPU draws other random
+numbers than the CPU, and the gap showed that one draw is not enough, so the check now uses 5.
+
+**Limits of the leaf mask.** The mask uses colour only. In a visual check of 12 masks from a trial
+run on 300 photos, 8 were clean; a brightly lit patch of background and a yellowish shadow were
+counted as leaf in two photos, and parts of a dark, glossy leaf and of a pale corn leaf were missed
+in two others. The mask is built
+to keep pale and dry lesions rather than drop them, since lesions are where the model should look.
+All models are measured with the same masks, so the differences between models are less affected
+than the absolute percentages.
+  
 ## 12 Nov 2026: fine-tuning on field photos (PlantDoc train)
 
 `python -m src.finetune_field --checkpoint outputs/final_model.pt --plantdoc-dir data/PlantDoc`:
@@ -63,15 +184,16 @@ suggestive, not conclusive. Worth trying strong augmentation with more epochs fo
 
 ```bash
 python -m src.robustness --checkpoint outputs/final_model.pt outputs/cnn_augment-none.pt \
-    outputs/cnn_augment-strong.pt --no-clearml
+    outputs/cnn_augment-strong.pt --run-name maryam-robustness
 ```
 
 All 8,318 test images, 7 distortions at 3 strengths each (22 levels including clean). Each batch
 is distorted once and given to all three models, so they see identical images; the noise is seeded,
 so the run is repeatable. Distortions are applied to the original image before the usual resize to
-128x128, as they would be in a phone photo. Not logged to ClearML yet (no workspace access); re-run
-without `--no-clearml` for a task ID. Figures (not committed): `outputs/robustness/robustness_accuracy.png`
-and `outputs/robustness/distortions_preview.png`.
+128x128, as they would be in a phone photo. Re-run on 15 Nov with Weights & Biases logging and the
+no-leaf rate (W&B run `mye5k1mi`, project Aritifical-unintelligence-leafproject): every accuracy
+was identical to the first run, so the test is fully repeatable. Figures (not committed):
+`outputs/robustness/robustness_accuracy.png` and `outputs/robustness/distortions_preview.png`.
 
 Models: `final_model` is the 99% model (all training data, 20 epochs, basic augmentation, task
 `1bee769f0c32413e8b0ad57fdcc7d626`); `augment-none` and `augment-strong` are the 4 Nov subset models
@@ -79,16 +201,25 @@ Models: `final_model` is the 99% model (all training data, 20 epochs, basic augm
 `0cc43dfc41094935a7dd024058f32ce1`). The final model differs in data and epochs too, so only none
 vs strong isolates the effect of augmentation.
 
-| Model | Clean | Mean over the 21 distorted levels | Drop (points) | Worst level |
-| --- | --- | --- | --- | --- |
-| final_model | 99.0% | **73.2%** | 25.8 | noise 50 (6.0%) |
-| augment-strong | 80.6% | 62.2% | **18.5** | noise 50 (13.0%) |
-| augment-none | 91.4% | 54.4% | 37.1 | noise 50 (5.5%) |
+| Model | Clean | Mean over the 21 distorted levels | Drop (points) | Share of clean accuracy kept | Worst level |
+| --- | --- | --- | --- | --- | --- |
+| final_model | 99.0% | **73.2%** | 25.8 | 74% | noise 50 (6.0%) |
+| augment-strong | 80.6% | 62.2% | 18.5 | 77% | noise 50 (13.0%) |
+| augment-none | 91.4% | 54.4% | 37.1 | 59% | noise 50 (5.5%) |
 
-Test accuracy at every level (best model per row in bold; random guessing is 2.6%). Strengths:
-blur radius in pixels, noise standard deviation on the 0-255 scale, share of light kept (dark),
-brightness factor (bright), degrees (rotation), JPEG quality out of 100, share of the width and
-height kept (zoom).
+The drop in points partly reflects where each model starts: augment-strong has the lowest clean
+accuracy, so it has the least room to fall. The share of clean accuracy kept (mean on distorted
+images divided by clean accuracy) corrects for that. Strong augmentation still keeps the most (77%,
+against 74% for the final model and 59% without augmentation), but its lead over the final model is
+only about 3 points from one training run each, so it is not a clear win. The clear gap is between
+augmentation (strong or basic) and none.
+
+Test accuracy at every level (random guessing is 2.6%). The best model in a row is in bold only
+where it leads the runner-up by at least 5 points: each model was trained once, so smaller gaps may
+come from the training run rather than the model (noise 25 has no clear winner). The table is
+written by `src.robustness` to `outputs/robustness/robustness_table.md`. Strengths: blur radius in
+pixels, noise standard deviation on the 0-255 scale, share of light kept (dark), brightness factor
+(bright), degrees (rotation), JPEG quality out of 100, share of the width and height kept (zoom).
 
 | Distortion | Strength | final_model | augment-none | augment-strong |
 | --- | --- | --- | --- | --- |
@@ -97,7 +228,7 @@ height kept (zoom).
 | blur | 2 | 72.6% | 54.9% | **82.9%** |
 | blur | 4 | 41.0% | 37.6% | **71.2%** |
 | noise | 10 | **97.8%** | 89.0% | 77.1% |
-| noise | 25 | 42.7% | **49.2%** | 47.7% |
+| noise | 25 | 42.7% | 49.2% | 47.7% |
 | noise | 50 | 6.0% | 5.5% | **13.0%** |
 | dark | 0.7 | **98.5%** | 41.7% | 75.1% |
 | dark | 0.5 | **84.2%** | 18.4% | 55.0% |
@@ -118,9 +249,9 @@ height kept (zoom).
 - **Rotation does no harm.** The final model keeps 96-98% at 30-90 degrees although it was trained
   with rotations of 15 degrees at most, and the model trained without any augmentation loses at
   most 6 points. Leaves have no fixed "up", so the models never relied on orientation.
-- **Noise is the main weakness of all three models.** At noise 25 they fall to 43-49%, at noise 50 to
-  near random guessing. No model was trained with noise, so adding Gaussian noise to the training
-  augmentation is the clearest next step.
+- **Noise is the main weakness of all three models.** At noise 25 they fall to 43-49% with no clear
+  winner, at noise 50 to near random guessing. No model was trained with noise, so adding Gaussian
+  noise to the training augmentation is the clearest next step.
 - **Strong augmentation protects against what it trains on.** With blur 4 it keeps 71.2%, against
   41.0% for the 99% model and 37.6% without augmentation, although its clean accuracy is 18 points
   lower. It is also best at zoom 0.4 (34.3%) and noise 50 (13.0%). Strong augmentation includes
@@ -131,11 +262,45 @@ height kept (zoom).
   trained without colour changes can use lighting as a shortcut.
 - **The 99% model is the most robust on average (73.2%) but still loses 26 points**, and heavy JPEG
   compression (quality 5), zoom 0.4 and dark 0.3 take it below 33%.
-- **Consistent with the field test (PlantDoc, further down):** strong augmentation also does better on real
-  field photos (10.2% vs 6.4%). Field photos combine several of these changes at once, which may help
-  explain the drop from 99% to 14%. Training the final model with strong augmentation plus noise,
-  for more epochs, is the natural follow-up.
-- A first run on a fixed sample of 500 test images gave the same picture within about 2 points.
+- **Consistent with the field test (PlantDoc, further down):** strong augmentation also does better
+  on real field photos (10.2% vs 6.4%). Field photos combine several of these changes at once, which
+  may help explain the drop from 99% to 14%. Training the final model with strong augmentation plus
+  noise, for more epochs, is the natural follow-up.
+- A first run on a fixed sample of 500 test images gave the same picture: the mean over the
+  distorted levels was within 2 points for every model, though single levels differed by up to
+  4.1 points (augment-strong at bright 1.6), so single levels from a sample are less reliable.
+
+**When a leaf is read as "no leaf".** The dataset has a class Background_without_leaves (photos
+with no leaf). Reading a leaf photo as that class is a distinct kind of failure: the model does not
+give a wrong disease, it says there is no leaf. The table shows the share of leaf photos read as
+Background_without_leaves (from `outputs/robustness/robustness_no_leaf_table.md`, rounded to whole
+percent). Clean photos and every level not listed stay at 1% or less for all three models.
+
+| Distortion | Strength | final_model | augment-none | augment-strong |
+| --- | --- | --- | --- | --- |
+| blur | 4 | 3% | 1% | 0% |
+| noise | 25 | 29% | 8% | 3% |
+| noise | 50 | 62% | 62% | 30% |
+| dark | 0.5 | 0% | 10% | 1% |
+| dark | 0.3 | 11% | 19% | 11% |
+| bright | 1.3 | 0% | 4% | 0% |
+| bright | 1.6 | 0% | 16% | 0% |
+| bright | 2 | 1% | 27% | 1% |
+| jpeg | 5 | 13% | 6% | 11% |
+
+- **Noise is the main cause.** At noise 25 the final model reads 29% of leaf
+  photos as "no leaf", about half of its mistakes at that level, and at noise 50 the final model
+  and augment-none do so for 62%. This matches the Grad-CAM results (15 Nov, from the Grad-CAM
+  pull request): the noisy tomato leaf there is read as Background without leaves, with the heat
+  spread over the background.
+- **Strong augmentation halves it at noise 50** (30% against 62%) and keeps it at 3% at noise 25,
+  although it was never trained with noise either.
+- **Without augmentation, lighting changes also hide the leaf**: 27% at double brightness and 19%
+  at 30% of the light, against 1% and 11% for the final model. This is the same lighting shortcut
+  as in the accuracy table.
+- **For the app this is the safer failure**: "no leaf found, please take a sharper photo" is better
+  than a confident wrong disease. It is still a failure, since the leaf was there. At the mildest
+  strength of every distortion the final model and augment-strong stay below 0.5%.
 
 ## 9 Nov 2026: leak check (Sara)
 
@@ -243,6 +408,9 @@ for 20 epochs, and the cosine learning-rate schedule. The sweep should separate 
 
 ### Test-set evaluation of the full-data model (`python -m src.evaluate`)
 
+Re-run on 15 Nov with Weights & Biases logging (run `1hp9lxh9`, project
+Aritifical-unintelligence-leafproject): same results as the 27 Oct run.
+
 - Accuracy 99.0%, top-5 accuracy 99.99%, macro F1 0.986, weighted F1 0.990.
 - Every class has F1 ≥ 0.89, including the smallest classes, which scored 0% after the
   subset run (Potato healthy 0.978, Apple cedar rust 0.988, Grape healthy 1.000).
@@ -255,7 +423,7 @@ for 20 epochs, and the cosine learning-rate schedule. The sweep should separate 
 | Corn: Northern leaf blight | 0.933 | 0.946 | 0.939 | 147 |
 
 - Error analysis: the two corn diseases are mostly confused with each other; both show grey-brown
-  elongated lesions. See `outputs/confusion_matrix.png` (not committed) or the ClearML eval task.
+  elongated lesions. See the confusion matrix in W&B run `1hp9lxh9`.
 
 ### App check (`python app/app.py`)
 
