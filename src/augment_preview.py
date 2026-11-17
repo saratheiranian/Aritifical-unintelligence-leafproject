@@ -15,7 +15,7 @@ import numpy as np
 import torch
 from torchvision import transforms
 
-from src.transforms import augmentation_steps
+from src.transforms import AUGMENT_LEVELS, augmentation_steps
 
 
 def augmented_copies(image, level, copies, img_size=128, seed=0):
@@ -25,7 +25,7 @@ def augmented_copies(image, level, copies, img_size=128, seed=0):
     return [pipeline(image) for _ in range(copies)]
 
 
-def preview_figure(images, titles=None, levels=("none", "basic", "strong"), copies=2, img_size=128):
+def preview_figure(images, titles=None, levels=AUGMENT_LEVELS, copies=2, img_size=128):
     """One row per image; for each level, `copies` columns of augmented versions."""
     cols = len(levels) * copies
     fig, axes = plt.subplots(len(images), cols, figsize=(1.6 * cols, 1.7 * len(images)), squeeze=False)

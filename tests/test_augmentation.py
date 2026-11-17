@@ -60,8 +60,8 @@ def test_augmented_copies_are_reproducible():
 
 def test_preview_figure_has_one_column_per_level_and_copy():
     fig = preview_figure([leaf(), leaf()], titles=["a", "b"], copies=2, img_size=48)
-    assert len(fig.axes) == 2 * 3 * 2
-    assert [ax.get_title() for ax in fig.axes[:6:2]] == ["none", "basic", "strong"]
+    assert len(fig.axes) == 2 * len(AUGMENT_LEVELS) * 2
+    assert [ax.get_title() for ax in fig.axes[:8:2]] == list(AUGMENT_LEVELS)
 
 
 def test_train_cli_and_sweep_accept_augment_levels():
@@ -97,7 +97,11 @@ def test_gaussian_noise_is_repeatable_with_a_seed():
     a = np.asarray(RandomGaussianNoise(p=1.0)(image))
     torch.manual_seed(5)
     b = np.asarray(RandomGaussianNoise(p=1.0)(image))
-    assert np.array_equal(a, b) and "max_std=25.0" in repr(RandomGaussianNoise())
+    assert np.array_equal(a, b)
+
+
+def test_gaussian_noise_repr_shows_its_settings():
+    assert repr(RandomGaussianNoise()) == "RandomGaussianNoise(max_std=25.0, p=0.5)"
 
 
 def test_train_accepts_the_noise_level():

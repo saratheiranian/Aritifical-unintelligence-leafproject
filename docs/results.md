@@ -1,8 +1,9 @@
 # Results log
 
 Running record of experiments, for the report's data, evaluation and project-management
-sections. Newest first. Runs below were tracked on app.clear.ml (project `PlantDisease`)
-while the KCL ClearML server was down.
+sections. Newest first. Runs up to 14 Nov were tracked on app.clear.ml (project `PlantDisease`)
+while the KCL ClearML server was down; from 14 Nov runs are tracked on the team's Weights & Biases
+project (`src/config.py`), and the W&B run IDs are given with each result.
 
 ## 16 Nov 2026: noise augmentation (Sara, MacBook, Apple GPU)
 
@@ -19,6 +20,12 @@ drawn between 0 and 25 on the 0-255 scale) on half of the training images. It is
 `strong` model, trained the same way (25% subset, 10 epochs, simple CNN). W&B runs: training `xavavyjz`,
 robustness `9yeu0ewm`.
 
+Note on noise strength: the robustness test adds noise to the full-size photo (256x256) before the usual
+resize to 128x128, and the resize averages neighbouring pixels. Measured on a plain grey image, test noise
+10, 25 and 50 is left with a standard deviation of about 3, 8 and 16 at the model's input. The training
+noise is added after the resize, so its range (0 to 25) covers every test level; "noise 25" in the table
+is not the same strength as 25 in training.
+
 | | strong (4 Nov) | noise (16 Nov) |
 | --- | --- | --- |
 | Best validation accuracy | 80.7% | 79.1% |
@@ -33,12 +40,17 @@ robustness `9yeu0ewm`.
 | Field photos, top-5 accuracy | 39.4% | 38.1% |
 | Field photos, macro F1 | 0.093 | 0.078 |
 
-- **Noise augmentation removes the noise weakness at no cost on clean images.** Accuracy at noise 25 goes
-  from 47% to 77% and at noise 50 from 13% to 64%, while clean accuracy stays the same (79.5% vs 80.0%,
-  within the difference between two training runs). The strong model read 30% of very noisy leaf photos
-  as "no leaf"; the noise model reads 0%.
-- **It also helps on dark, JPEG and zoomed images** (dark 0.5: 66% vs 55%; zoom 0.6: 63% vs 53%), and is
-  2 to 5 points lower on blur and rotation, so the mean over all distortions rises by 6 points.
+- **It fixes Gaussian noise of the kind in our robustness test.** Accuracy at noise 25 goes from 47% to 77%
+  and at noise 50 from 13% to 64%. The model is trained and tested on the same kind of noise (Gaussian, on
+  every pixel), so a large gain here is expected; we did not test noise types it never saw (for example
+  salt-and-pepper or Poisson), so we cannot say it generalises to other kinds of grain. The strong model
+  read 30% of very noisy leaf photos as "no leaf"; the noise model reads at most 3% at any level.
+- **Clean accuracy is within 2 points** (79.5% vs 80.0% on the 1,000 test images, best validation 79.1% vs
+  80.7%), from one training run each, so a small loss cannot be ruled out.
+- **The two noise rows give most of the rise in the mean.** They add 3.9 of the 5.8 points; without them
+  the mean over the other 19 levels rises by 2.1 points (65.4% to 67.5%). It helps on dark, JPEG and
+  zoomed images (dark 0.5: 66% vs 55%; zoom 0.6: 63% vs 53%) and is 2 to 5 points lower on blur and
+  rotation.
 - **It does not help on real field photos** (8.9% vs 10.2%, a difference of 3 photos out of 236). Noise is
   not what makes PlantDoc hard: field photos differ from lab photos mainly in background, several leaves
   per photo and lighting, which augmenting one lab leaf does not imitate. Fine-tuning on field photos
@@ -46,8 +58,8 @@ robustness `9yeu0ewm`.
 - Validation accuracy was still rising at epoch 10, so these are early numbers; the final model trains
   for longer on all the data.
 
-Recommendation for the final model: train with `--augment noise`. It keeps lab accuracy, makes the model
-far more robust to grainy, low-light phone photos, and costs about 3 ms per image in training.
+Recommendation for the final model: train with `--augment noise`. Clean accuracy stays within 2 points,
+and the model copes far better with Gaussian noise like that in the robustness test.
 
 ## 15 Nov 2026: Grad-CAM, where the models look (Maryam, MacBook, Apple GPU)
 

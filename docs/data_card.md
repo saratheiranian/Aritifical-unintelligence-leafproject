@@ -61,7 +61,11 @@ section 2 and the Responsible AI paragraph.
   - `noise`: everything in `strong`, plus Gaussian noise (standard deviation drawn between 0 and
     25 on the 0-255 scale) on half of the images. Added after the robustness test found noise to
     be every model's main weakness: on the 25% subset it raised accuracy at noise 25 from 47% to
-    77% with no loss on clean images (see `docs/results.md`, 16 Nov).
+    77%, with clean accuracy within 2 points (one run each; see `docs/results.md`, 16 Nov).
+    The training noise is added after the resize to 128x128, whereas `src/robustness.py` adds its
+    noise to the full-size photo before the resize, which averages much of it away (test noise 25
+    is left with a standard deviation of about 8 at 128x128). So "0 to 25" here and "noise 25" in
+    the robustness table are different strengths. Only Gaussian noise was tested.
 - Validation and test images are only resized and normalised.
 - Results of the levels: see `docs/results.md` (4 Nov).
 

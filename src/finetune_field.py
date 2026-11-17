@@ -32,7 +32,7 @@ from src.evaluate import load_checkpoint, predict
 from src.field_test import ImageListDataset, field_report, list_images, resolve_mapping
 from src.models import get_device
 from src.train import run_epoch, set_seed
-from src.transforms import get_transforms
+from src.transforms import AUGMENT_LEVELS, get_transforms
 
 
 def mapped_items(root, class_names):
@@ -114,7 +114,7 @@ def main(argv=None):
     p.add_argument("--epochs", type=int, default=10)
     p.add_argument("--lr", type=float, default=1e-4)
     p.add_argument("--batch-size", type=int, default=32)
-    p.add_argument("--augment", default="strong", choices=["none", "basic", "strong"])
+    p.add_argument("--augment", default="strong", choices=AUGMENT_LEVELS)
     p.add_argument("--val-fraction", type=float, default=0.15)
     p.add_argument("--replay-per-class", type=int, default=30,
                    help="PlantVillage training images per class mixed in (0 = none, no lab test)")
