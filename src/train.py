@@ -22,6 +22,7 @@ from torch import nn
 from src.config import WANDB_ENTITY, WANDB_PROJECT
 from src.data import class_weights, make_loaders
 from src.models import build_model, count_parameters, get_device
+from src.transforms import AUGMENT_LEVELS
 
 # still imported by the evaluation and data scripts, which have not moved to W&B yet
 CLEARML_PROJECT = "PlantDisease"
@@ -32,7 +33,7 @@ def parse_args(argv=None):
     # data
     p.add_argument("--img-size", type=int, default=128)
     p.add_argument("--subset", type=float, default=1.0, help="fraction of the training split")
-    p.add_argument("--augment", choices=["none", "basic", "strong"], default="basic",
+    p.add_argument("--augment", choices=AUGMENT_LEVELS, default="basic",
                    help="training augmentation strength")
     p.add_argument("--no-augment", action="store_true", help="same as --augment none")
     p.add_argument("--balanced-sampler", action="store_true", help="draw every class equally often in training")
