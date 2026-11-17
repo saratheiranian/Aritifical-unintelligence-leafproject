@@ -95,7 +95,11 @@ The local app (`GRADIO_SERVER_NAME=0.0.0.0`) opened on an iPhone over the KCL Wi
 Wide tables do not fit on a phone: the Probabilities table and the Batch table's probability and
 "Low confidence" columns need a sideways swipe.
 
+Real-leaf photo (17 Nov, Colab link on an iPhone): a dry maple leaf held in a hand outdoors, with
+fallen leaves behind it, gave Background without leaves (54%), then Corn: Cercospora leaf spot (25%).
+Maple is not one of the 39 classes, and the photo is a field photo, so this matches the PlantDoc
+result. The low-confidence warning did not appear, because 54% is just above the 50% threshold.
+
 ## Next
 
-- Real-leaf photo with the phone camera.
 - Render.com for a permanent link.
