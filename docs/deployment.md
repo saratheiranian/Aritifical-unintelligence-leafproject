@@ -46,6 +46,24 @@ Files that would be uploaded to the Space:
 - The lecturer confirmed the problem on the KEATS Q&A forum ("Gradio tutorial"): do not buy a subscription,
   keep testing locally or in Colab, and the teaching team will clarify the deployment arrangements.
 
+## CPU timing (issue #32, measured 10 Nov)
+
+Measured on a Windows laptop CPU (Snapdragon X 12-core X1E80100 @ 3.40 GHz, Python 3.11,
+PyTorch 2.15.0, CPU build), with `outputs/final_model.pt` and one leaf photo, using `Predictor`
+from `src/inference.py`:
+
+- Model load: 0.07 s (once, when the app starts)
+- First prediction: 0.129 s
+- Average over 20 predictions: 0.007 s
+
+So the requirement of under 2 s per prediction on a laptop CPU holds. These times are for the
+model only; the app adds a little time for uploading the image and showing the results.
+Maryam's MacBook (Apple M4, Python 3.12, PyTorch 2.15) gave 0.013 s, 0.023 s and 0.002 s.
+
+Command used (run from the repo root, with a leaf photo saved as `outputs/leaf.jpg`):
+
+    python -c "import time; from PIL import Image; from src.inference import Predictor; t0=time.perf_counter(); p=Predictor('outputs/final_model.pt', device='cpu'); t1=time.perf_counter(); img=Image.open('outputs/leaf.jpg').convert('RGB'); p.top_k(img,5); t2=time.perf_counter(); [p.top_k(img,5) for _ in range(20)]; t3=time.perf_counter(); print(f'Model load: {t1-t0:.2f} s'); print(f'First prediction: {t2-t1:.3f} s'); print(f'Average of 20 predictions: {(t3-t2)/20:.3f} s')"
+
 ## Next
 
 - Deploy the Space once the teaching team confirms the deployment option.

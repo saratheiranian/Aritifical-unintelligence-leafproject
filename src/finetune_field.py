@@ -120,18 +120,18 @@ def main(argv=None):
                    help="PlantVillage training images per class mixed in (0 = none, no lab test)")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--output", default="outputs/field_finetuned.pt")
-    p.add_argument("--clearml", action="store_true", help="log the run to ClearML")
+    p.add_argument("--wandb", action="store_true", help="log the run to W&B (run `wandb login` first)")
     args = p.parse_args(argv)
     set_seed(args.seed)
 
-    task = None
-    if args.clearml:  # pragma: no cover - needs a ClearML server
-        from clearml import Task
+    run = None
+    if args.wandb:  # pragma: no cover - needs a W&B account
+        import wandb
 
-        from src.train import CLEARML_PROJECT
+        from src.config import WANDB_ENTITY, WANDB_PROJECT
 
-        task = Task.init(project_name=CLEARML_PROJECT, task_name="finetune-field",
-                         tags=["plantdoc", "finetune"], output_uri=True)
+        run = wandb.init(entity=WANDB_ENTITY, project=WANDB_PROJECT, name="finetune-field",
+                         job_type="finetune", tags=["plantdoc", "finetune"], config=vars(args))
 
     device = get_device()
     model, ckpt = load_checkpoint(args.checkpoint, device)
@@ -167,10 +167,9 @@ def main(argv=None):
         val_loss, val_acc = run_epoch(model, val_loader, criterion, device)
         print(f"epoch {epoch:02d} | train loss {train_loss:.4f} acc {train_acc:.4f} "
               f"| field val loss {val_loss:.4f} acc {val_acc:.4f}")
-        if task:  # pragma: no cover
-            logger = task.get_logger()
-            logger.report_scalar("accuracy", "train", value=train_acc, iteration=epoch)
-            logger.report_scalar("accuracy", "field val", value=val_acc, iteration=epoch)
+        if run:  # pragma: no cover
+            run.log({"epoch": epoch, "train/loss": train_loss, "train/accuracy": train_acc,
+                     "field_val/loss": val_loss, "field_val/accuracy": val_acc})
         if val_acc > best_val:
             best_val, best_epoch = val_acc, epoch
             torch.save({**ckpt, "state_dict": model.state_dict(), "val_acc": val_acc, "epoch": epoch,
@@ -193,9 +192,12 @@ def main(argv=None):
     print(table.round(4).to_string())
     table.to_csv(os.path.splitext(args.output)[0] + "_results.csv")
 
-    if task:  # pragma: no cover
+    if run:  # pragma: no cover
         for name, (b, a) in rows.items():
-            task.get_logger().report_single_value(f"{name} after", a)
+            run.summary[f"{name} before"] = b
+            run.summary[f"{name} after"] = a
+        run.summary["best_field_val_accuracy"] = best_val
+        run.finish()
     return table
 
 
