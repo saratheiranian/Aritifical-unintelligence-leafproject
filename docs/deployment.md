@@ -70,11 +70,13 @@ Command used (run from the repo root, with a leaf photo saved as `outputs/leaf.j
 The teaching team's GAP_ML_Tools guide gives two deployment routes instead of a Space: Colab for
 demo day (temporary public link) and Render.com for a permanent link. The Colab route works:
 
-- Notebook: `notebooks/colab_demo.ipynb`. Open it in Colab and run both cells.
+- Notebook: `notebooks/colab_demo.ipynb`. Open it in Colab, run cell 1 once, then cell 2. Running cell 1 again does not clone the repo a second time, and after Runtime > Restart session only cell 2 is needed.
 - Cell 1 clones the repo and installs `app/requirements.txt`. Cell 2 loads the model from
   `Media1234/plant-disease-cnn` (via `HF_MODEL_REPO`) and starts the app with `share=True`.
-- Gradio prints a public `https://....gradio.live` link. It works from any network while the
-  Colab cell is running (at most about a week).
+- Gradio prints a public `https://....gradio.live` link that works from any network, but only while the
+  notebook runs: free Colab stops after a while idle (Maryam's link from 16:50 was dead by 22:12) and
+  after at most about 12 hours, and the link changes on every start. So start it just before the demo
+  and share the link (or a QR code) only after the last start.
 - Tested from an iPhone on 17 Nov: a tomato leaf photo gave Tomato: Early blight (80%).
 - The example gallery and the "training images of the predicted class" are empty in Colab,
   because `app/examples` and `app/class_examples` are made locally by `src/make_app_assets` and
@@ -116,4 +118,8 @@ Live at https://plant-disease-classifier-7w10.onrender.com (Render free web serv
 
 ## Next
 
-- Update the report (section 5) with the Render link.
+- After the code freeze: tag the code (e.g. `demo-v1`) and clone that tag in the notebook, so a change to
+  `main` on demo day cannot change the demo.
+- Batch tab: rotate phone photos with `ImageOps.exif_transpose`, as the single-image tab already does
+  (separate PR).
+- Example images on Render and Colab: upload them to the Hugging Face repo and download them at start-up.
