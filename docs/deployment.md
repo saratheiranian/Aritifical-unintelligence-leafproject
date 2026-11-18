@@ -100,6 +100,20 @@ fallen leaves behind it, gave Background without leaves (54%), then Corn: Cercos
 Maple is not one of the 39 classes, and the photo is a field photo, so this matches the PlantDoc
 result. The low-confidence warning did not appear, because 54% is just above the 50% threshold.
 
+## Render (permanent link, 18 Nov)
+
+Live at https://plant-disease-classifier-7w10.onrender.com (Render free web service).
+
+- Source: the public GitHub repo, branch `main` (no auto-deploy: press "Manual Deploy" after changes).
+- Build: `pip install -r app/requirements.txt`. Start: `python app/app.py`.
+- Environment: `PYTHON_VERSION=3.11.10`, `HF_MODEL_REPO=Media1234/plant-disease-cnn`,
+  `GRADIO_SERVER_NAME=0.0.0.0`, `GRADIO_SERVER_PORT=10000`.
+- Free plan: 0.1 CPU and 512 MB RAM, which is enough for the CNN. It sleeps after 15 minutes without
+  visitors, so the first visit after that takes about a minute.
+- Tested on 18 Nov from a laptop and an iPhone. The same tomato photo as in the Colab test gave
+  Tomato: Early blight (80.2%), the same as on Colab. A Google photo of a tomato sprig with several
+  leaflets gave Raspberry: healthy (79%), another case of a photo unlike the single-leaf training images.
+
 ## Next
 
-- Render.com for a permanent link.
+- Update the report (section 5) with the Render link.

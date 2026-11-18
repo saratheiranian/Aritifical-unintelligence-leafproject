@@ -22,7 +22,7 @@ Partners review each other's pull requests: 1 and 2, 3 and 4, 5 and 6.
 ## Links
 
 - Repository: https://github.com/saratheiranian/Aritifical-unintelligence-leafproject
-- Deployed app (HF Space): _TBD_
+- Deployed app (Render): https://plant-disease-classifier-7w10.onrender.com
 - Final model (ClearML task ID): `1bee769f0c32413e8b0ad57fdcc7d626` (output model `best_model.pt`, 99.0% test accuracy). Results log: [docs/results.md](docs/results.md)
 
 ## Status and results
@@ -36,7 +36,7 @@ Partners review each other's pull requests: 1 and 2, 3 and 4, 5 and 6.
 | Gradio app (local) | Done |
 | Hyperparameter sweep | To do (waiting for the KCL ClearML GPU queue) |
 | ResNet18 baseline | To do |
-| Hugging Face Space | To do |
+| Deployment | Done: Render (permanent link) and a Colab notebook for demo day |
 | Report, demo video, AI use statement | To do (deadline 3 Dec 2026, 4pm) |
 
 Weakest classes: Corn Cercospora leaf spot (F1 0.89) and Tomato Early blight (F1 0.93).
