@@ -81,12 +81,17 @@ def main(argv=None):
                          job_type="eval", tags=["eval", "test"], config=vars(args))
         print(f"W&B run ID: {run.id}")
 
-    # finish the W&B run even if evaluation fails halfway, so it is not left running
+    # close the W&B run even if evaluation fails halfway, so it is not left running; a run that
+    # crashed is marked as failed, so it is not mistaken for a finished result
     try:
-        return run_evaluation(args, run)
-    finally:
+        result = run_evaluation(args, run)
+    except BaseException:  # also Ctrl+C: the run did not finish either
         if run:
-            run.finish()
+            run.finish(exit_code=1)
+        raise
+    if run:
+        run.finish()
+    return result
 
 
 def run_evaluation(args, run=None):

@@ -637,10 +637,9 @@ def run_gradcam(argv, started):
 
     from src import robustness  # needs the dataset library, so imported only here
 
-    clashes = robustness.duplicate_names(args.checkpoint)
-    if clashes:
-        p.error(f"two model files have the same name: {', '.join(clashes)}. "
-                "Rename one of them, for example final_model_v2.pt")
+    error = robustness.duplicate_names_error(args.checkpoint)
+    if error:
+        p.error(error)
 
     test, image_col, label_col, class_names = robustness.load_test_split()
     device = get_device()
@@ -796,13 +795,18 @@ def run_gradcam(argv, started):
 
 def main(argv=None):
     """Closes the W&B run even if something fails halfway, so no run is left marked as running
-    in the team's project."""
+    in the team's project. A run that crashed is marked as failed, so it is not mistaken for a
+    finished result."""
     started = []
     try:
-        return run_gradcam(argv, started)
-    finally:
+        table = run_gradcam(argv, started)
+    except BaseException:  # also Ctrl+C: the run did not finish either
         for run in started:
-            run.finish()
+            run.finish(exit_code=1)
+        raise
+    for run in started:
+        run.finish()
+    return table
 
 
 if __name__ == "__main__":

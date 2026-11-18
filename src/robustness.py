@@ -108,12 +108,21 @@ def duplicate_names(checkpoint_paths):
     return sorted({name for name in names if names.count(name) > 1})
 
 
+def duplicate_names_error(checkpoint_paths):
+    """The message to show when model files would get the same name, or None if all are unique.
+    Kept in one place so robustness.py and gradcam.py always say the same thing."""
+    clashes = duplicate_names(checkpoint_paths)
+    if not clashes:
+        return None
+    return (f"two model files have the same name: {', '.join(clashes)}. "
+            "Rename one of them, for example final_model_v2.pt")
+
+
 def load_models(checkpoint_paths, device):
     """{model name: (model, test-time transform)}; the name is the file name without .pt."""
-    clashes = duplicate_names(checkpoint_paths)
-    if clashes:
-        raise ValueError(f"two model files have the same name: {', '.join(clashes)}. "
-                         "Rename one of them, for example final_model_v2.pt")
+    error = duplicate_names_error(checkpoint_paths)
+    if error:
+        raise ValueError(error)
     models = {}
     for path in checkpoint_paths:
         model, ckpt = load_checkpoint(path, device)
@@ -305,10 +314,9 @@ def run_robustness(argv, started):
         missing = [path for path in args.checkpoint if not os.path.exists(path)]
         if missing:
             p.error(f"checkpoint not found: {', '.join(missing)}")
-        clashes = duplicate_names(args.checkpoint)
-        if clashes:
-            p.error(f"two model files have the same name: {', '.join(clashes)}. "
-                    "Rename one of them, for example final_model_v2.pt")
+        error = duplicate_names_error(args.checkpoint)
+        if error:
+            p.error(error)
 
     test, image_col, label_col, class_names = load_test_split()
     if not 0 <= args.preview_index < len(test):
@@ -373,13 +381,18 @@ def run_robustness(argv, started):
 
 def main(argv=None):
     """Closes the W&B run even if something fails halfway, so no run is left marked as running
-    in the team's project."""
+    in the team's project. A run that crashed is marked as failed, so it is not mistaken for a
+    finished result."""
     started = []
     try:
-        return run_robustness(argv, started)
-    finally:
+        results = run_robustness(argv, started)
+    except BaseException:  # also Ctrl+C: the run did not finish either
         for run in started:
-            run.finish()
+            run.finish(exit_code=1)
+        raise
+    for run in started:
+        run.finish()
+    return results
 
 
 if __name__ == "__main__":
