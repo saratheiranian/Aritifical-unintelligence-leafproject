@@ -109,7 +109,7 @@ def make_loaders(
 ):
     """Build train/val/test DataLoaders. Returns (loaders, class_names).
 
-    augment: "none", "basic" or "strong" (True/False also work); applied to training only.
+    augment: "none", "basic", "strong" or "noise" (True/False also work); applied to training only.
     balanced_sampler=True draws training images so every class is equally likely
     (validation and test keep the real class distribution).
     """
