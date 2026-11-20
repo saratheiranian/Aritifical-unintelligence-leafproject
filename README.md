@@ -85,8 +85,8 @@ Never commit `clearml.conf`, the dataset or model files (they are in `.gitignore
 
 All commands run from the repo root. Training, evaluation, robustness and Grad-CAM log to the
 team's Weights & Biases project (`src/config.py`); add `--no-wandb` to run them without tracking.
-Some data scripts still log to ClearML (`eda`, `data_quality` and `register_dataset`); add
-`--no-clearml` to `eda` or `data_quality` to skip it.
+`eda` and `data_quality` log to W&B too (add `--no-wandb` to skip it). Only `register_dataset`
+still uses ClearML, because the report cites the ClearML Dataset ID it created.
 
 ### 1. Data
 

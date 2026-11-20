@@ -115,7 +115,7 @@ def quality_dataset(monkeypatch):
 
 
 def test_main_writes_tables_and_plots(quality_dataset, tmp_path):
-    result = data_quality.main(["--no-clearml", "--output-dir", str(tmp_path)])
+    result = data_quality.main(["--no-wandb", "--output-dir", str(tmp_path)])
     assert result["duplicate_groups"] >= 1  # the planted duplicate pair
     assert result["flagged"] >= 1  # the planted dark image
     for name in QUALITY_FILES:
@@ -123,18 +123,42 @@ def test_main_writes_tables_and_plots(quality_dataset, tmp_path):
 
 
 def test_main_can_check_a_random_sample(quality_dataset, tmp_path):
-    data_quality.main(["--no-clearml", "--sample", "30", "--output-dir", str(tmp_path)])
+    data_quality.main(["--no-wandb", "--sample", "30", "--output-dir", str(tmp_path)])
     sizes = pd.read_csv(tmp_path / "quality_sizes.csv")
     assert sizes["images"].sum() == 30
 
 
-def test_main_logs_results_to_clearml(quality_dataset, tmp_path, monkeypatch):
-    fake_clearml = MagicMock()
-    monkeypatch.setitem(sys.modules, "clearml", fake_clearml)
+def test_main_logs_results_to_wandb(quality_dataset, tmp_path, monkeypatch):
+    fake_wandb = MagicMock()
+    monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
 
     data_quality.main(["--output-dir", str(tmp_path)])
 
-    logger = fake_clearml.Task.init.return_value.get_logger.return_value
-    assert logger.report_single_value.call_count == 5
-    assert logger.report_table.call_count == 2
-    assert logger.report_matplotlib_figure.call_count == 2
+    run = fake_wandb.init.return_value
+    assert fake_wandb.init.call_args.kwargs["name"] == "data-quality"
+    summary = run.summary.update.call_args.args[0]
+    assert summary["duplicate_groups"] >= 1 and summary["images_checked"] == len(quality_dataset)
+    logged = run.log.call_args.args[0]
+    assert set(logged) == {"quality/image_sizes", "quality/brightness_per_class",
+                           "quality/brightness", "quality/brightness_per_class_chart"}
+    run.finish.assert_called_once()
+
+
+def test_old_no_clearml_flag_still_turns_logging_off(quality_dataset, tmp_path, monkeypatch):
+    fake_wandb = MagicMock()
+    monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
+    data_quality.main(["--no-clearml", "--output-dir", str(tmp_path)])
+    fake_wandb.init.assert_not_called()
+
+
+def test_a_crash_closes_the_wandb_run_as_failed(tmp_path, monkeypatch):
+    fake_wandb = MagicMock()
+    monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
+
+    def broken_download():
+        raise RuntimeError("no network")
+
+    monkeypatch.setattr(data_quality, "load_full_dataset", broken_download)
+    with pytest.raises(RuntimeError):
+        data_quality.main(["--output-dir", str(tmp_path)])
+    fake_wandb.init.return_value.finish.assert_called_once_with(exit_code=1)

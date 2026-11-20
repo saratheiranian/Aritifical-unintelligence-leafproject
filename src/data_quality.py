@@ -1,6 +1,7 @@
 """Image quality checks: sizes, colour modes, brightness, duplicates and leakage between splits.
 
-Saves tables and plots to outputs/eda/ (use them in report section 2) and logs them to ClearML.
+Saves tables and plots to outputs/eda/ (use them in report section 2) and logs them to the team's
+Weights & Biases project (src/config.py); add --no-wandb to skip that.
 
     python -m src.data_quality                  # every image (a few minutes)
     python -m src.data_quality --sample 5000    # quick look at a random sample
@@ -22,9 +23,10 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 
+from src.config import WANDB_ENTITY, WANDB_PROJECT
 from src.data import SEED, load_full_dataset
+from src.evaluate import closing_wandb_runs
 from src.register_dataset import split_indices
-from src.train import CLEARML_PROJECT
 
 DARK, BRIGHT, LOW_CONTRAST = 40, 215, 15  # grey-level thresholds (0-255) for flagging images
 
@@ -81,16 +83,25 @@ def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     p.add_argument("--sample", type=int, default=None, help="check only this many random images")
     p.add_argument("--output-dir", default="outputs/eda")
-    p.add_argument("--no-clearml", action="store_true")
+    p.add_argument("--no-wandb", action="store_true", help="do not log to Weights & Biases")
+    # old name, kept so earlier commands still work
+    p.add_argument("--no-clearml", dest="no_wandb", action="store_true", help=argparse.SUPPRESS)
     args = p.parse_args(argv)
     os.makedirs(args.output_dir, exist_ok=True)
 
-    task = None
-    if not args.no_clearml:
-        from clearml import Task
+    run = None
+    if not args.no_wandb:
+        import wandb
 
-        task = Task.init(project_name=CLEARML_PROJECT, task_name="data-quality", tags=["data"])
+        run = wandb.init(entity=WANDB_ENTITY, project=WANDB_PROJECT, name="data-quality",
+                         job_type="data", tags=["data", "quality"], config=vars(args))
 
+    with closing_wandb_runs([run] if run is not None else []):  # no run with --no-wandb
+        return run_quality_checks(args, run)
+
+
+def run_quality_checks(args, run=None):
+    """The checks themselves; logs to `run` if one is given (closed by main)."""
     ds, image_col, label_col = load_full_dataset()
     names = ds.features[label_col].names
     labels = list(ds[label_col])
@@ -159,17 +170,22 @@ def main(argv=None):
     fig2.tight_layout()
     fig2.savefig(os.path.join(args.output_dir, "quality_brightness_per_class.png"), dpi=150)
 
-    if task:
-        logger = task.get_logger()
-        logger.report_single_value("images_checked", len(df))
-        logger.report_single_value("duplicate_groups", len(groups))
-        logger.report_single_value("cross_split_duplicate_groups", len(leaks))
-        logger.report_single_value("conflicting_label_groups", len(conflicts))
-        logger.report_single_value("flagged_images", len(flagged))
-        logger.report_table("Image sizes", "quality", iteration=0, table_plot=sizes)
-        logger.report_table("Brightness per class", "quality", iteration=0, table_plot=per_class)
-        logger.report_matplotlib_figure("Brightness", "quality", figure=fig1, iteration=0)
-        logger.report_matplotlib_figure("Brightness per class", "quality", figure=fig2, iteration=0)
+    if run:
+        import wandb
+
+        run.summary.update({
+            "images_checked": len(df),
+            "duplicate_groups": len(groups),
+            "cross_split_duplicate_groups": len(leaks),
+            "conflicting_label_groups": len(conflicts),
+            "flagged_images": len(flagged),
+        })
+        run.log({
+            "quality/image_sizes": wandb.Table(dataframe=sizes),
+            "quality/brightness_per_class": wandb.Table(dataframe=per_class.reset_index()),
+            "quality/brightness": wandb.Image(fig1),
+            "quality/brightness_per_class_chart": wandb.Image(fig2),
+        })
     return {"duplicate_groups": len(groups), "leaks": len(leaks), "flagged": len(flagged)}
 
 
