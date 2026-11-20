@@ -2,7 +2,7 @@
 
 KCL 5CCSAGAP small group project: classify plant diseases from leaf photos (39 classes,
 [PlantVillage](https://huggingface.co/datasets/DScomp380/plant_village)) with a CNN built from
-scratch in PyTorch, tracked in ClearML, served with Gradio on Hugging Face Spaces.
+scratch in PyTorch, tracked in ClearML, served with Gradio on Render.
 
 ## Team
 
@@ -14,7 +14,7 @@ Team number: 7
 | 2. Model lead | Precious | CNN architectures, training loop, ResNet18 baseline |
 | 3. Experiments lead | Amrit | ClearML tracking, hyperparameter sweep and search, results table |
 | 4. Evaluation lead | Maryam and Media | Test metrics, robustness tests, Grad-CAM, Responsible AI |
-| 5. App and deployment lead | Maryam and Media | Gradio app, Hugging Face Space, demo video |
+| 5. App and deployment lead | Maryam and Media | Gradio app, deployment (Render, Colab), demo video |
 | 6. Project manager and quality lead | Nischal | Planning, Issues, minutes, CI and tests, report assembly, submission |
 
 Partners review each other's pull requests: 1 and 2, 3 and 4, 5 and 6.
@@ -163,13 +163,18 @@ python -m src.make_app_assets                                    # example galle
 python app/app.py --checkpoint outputs/best_model.pt             # local app at http://127.0.0.1:7860
 hf auth login                                           # token with write access
 python -m src.publish_model --repo-id <hf-user>/plant-disease-cnn --checkpoint outputs/best_model.pt
-python -m src.deploy_space --space-id <hf-user>/plant-disease-classifier --hf-model-repo <hf-user>/plant-disease-cnn
 ```
+
+The app is deployed on Render (https://plant-disease-classifier-7w10.onrender.com) and can be started
+in Colab for demo day with `notebooks/colab_demo.ipynb`; both download the model from the Hugging Face
+Hub. Settings and test results are in [docs/deployment.md](docs/deployment.md). (`src/deploy_space.py`
+deploys to a Hugging Face Space instead, which now needs a paid plan for Gradio.)
 
 App features: top-5 predictions as bars and a table, an example gallery captioned with each
 image's true class, a model selector (when several checkpoints are given), a low-confidence
 warning, training images of the predicted class, flagging wrong predictions (saved to
-`app/flagged/`), batch upload, and an About tab on limitations.
+`app/flagged/`; on Render's free plan this folder is wiped when the app sleeps or restarts),
+batch upload, and an About tab on limitations.
 
 ### Tests
 

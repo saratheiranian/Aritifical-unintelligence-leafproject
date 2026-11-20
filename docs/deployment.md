@@ -74,7 +74,7 @@ demo day (temporary public link) and Render.com for a permanent link. The Colab 
 - Cell 1 clones the repo and installs `app/requirements.txt`. Cell 2 loads the model from
   `Media1234/plant-disease-cnn` (via `HF_MODEL_REPO`) and starts the app with `share=True`.
 - Gradio prints a public `https://....gradio.live` link that works from any network, but only while the
-  notebook runs: free Colab stops after a while idle (Maryam's link from 16:50 was dead by 22:12) and
+  notebook runs: free Colab stops after a while idle and
   after at most about 12 hours, and the link changes on every start. So start it just before the demo
   and share the link (or a QR code) only after the last start.
 - Tested from an iPhone on 17 Nov: a tomato leaf photo gave Tomato: Early blight (80%).
@@ -111,7 +111,7 @@ Live at https://plant-disease-classifier-7w10.onrender.com (Render free web serv
 - Environment: `PYTHON_VERSION=3.11.10`, `HF_MODEL_REPO=Media1234/plant-disease-cnn`,
   `GRADIO_SERVER_NAME=0.0.0.0`, `GRADIO_SERVER_PORT=10000`.
 - Free plan: 0.1 CPU and 512 MB RAM, which is enough for the CNN. It sleeps after 15 minutes without
-  visitors, so the first visit after that takes about a minute.
+  visitors, so the first visit after that takes 1 to 2 minutes. Flagged predictions are saved on Render's temporary disk, so they are lost when the app sleeps, restarts or is redeployed.
 - Tested on 18 Nov from a laptop and an iPhone. The same tomato photo as in the Colab test gave
   Tomato: Early blight (80.2%), the same as on Colab. A Google photo of a tomato sprig with several
   leaflets gave Raspberry: healthy (79%), another case of a photo unlike the single-leaf training images.
