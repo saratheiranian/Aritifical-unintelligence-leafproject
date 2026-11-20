@@ -10,6 +10,7 @@ datasets = pytest.importorskip("datasets")
 
 # imported after the skip check on purpose: src.robustness needs the dataset library
 from src import robustness
+from tests.eval_fakes import fake_test_split, fake_wandb
 from tests.test_distortions import leaf
 
 
@@ -96,33 +97,16 @@ def test_evaluate_summarise_and_plot(checkpoint, tmp_path):
 
 def test_main_logs_to_wandb(checkpoint, tmp_path, monkeypatch):
     """main() with a fake dataset and a fake wandb, so no download or account is needed."""
-    import sys
-    import types
-
-    features = datasets.Features({
-        "image": datasets.Image(),
-        "label": datasets.ClassLabel(num_classes=39),
-    })
-    test = datasets.Dataset.from_dict({"image": [leaf()] * 2, "label": [0, 1]}, features=features)
-    names = [f"class {i}" for i in range(38)] + ["Background_without_leaves"]
-    monkeypatch.setattr(robustness, "load_test_split", lambda: (test, "image", "label", names))
+    fake_test_split(monkeypatch, class_names=[f"class {i}" for i in range(38)]
+                    + [robustness.NO_LEAF_CLASS])
     monkeypatch.setattr(robustness, "get_device", lambda: "cpu")
-
-    logged = {}
-    run = types.SimpleNamespace(id="abc123", url="https://wandb.ai/run", summary={},
-                                log=logged.update, finish=lambda: logged.update(finished=True))
-    fake_wandb = types.SimpleNamespace(
-        init=lambda **kwargs: logged.update(init=kwargs) or run,
-        Table=lambda dataframe: dataframe,
-        Image=lambda path: path,
-    )
-    monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
+    started, logged, run = fake_wandb(monkeypatch)
 
     robustness.main(["--checkpoint", str(checkpoint), "--output-dir", str(tmp_path)])
-    assert logged["init"]["project"] == robustness.WANDB_PROJECT
+    assert started[0]["project"] == robustness.WANDB_PROJECT
     assert {"robustness/results", "robustness/summary", "robustness/accuracy_chart"} <= set(logged)
     assert "cnn/kept" in run.summary
-    assert logged["finished"]
+    assert logged["exit_codes"] == [None]  # closed once, as a finished run
     assert (tmp_path / "robustness_table.md").exists()
     assert (tmp_path / "robustness_no_leaf_table.md").exists()
     assert "cnn/max_no_leaf" in run.summary
@@ -130,19 +114,8 @@ def test_main_logs_to_wandb(checkpoint, tmp_path, monkeypatch):
 
 def test_preview_does_not_start_a_wandb_run(tmp_path, monkeypatch):
     """--preview saves the distortion figure only; it must not leave an empty run in WandB."""
-    import sys
-    import types
-
-    features = datasets.Features({
-        "image": datasets.Image(),
-        "label": datasets.ClassLabel(num_classes=39),
-    })
-    test = datasets.Dataset.from_dict({"image": [leaf()], "label": [0]}, features=features)
-    monkeypatch.setattr(robustness, "load_test_split",
-                        lambda: (test, "image", "label", [f"class {i}" for i in range(39)]))
-    started = []
-    fake_wandb = types.SimpleNamespace(init=lambda **kwargs: started.append(kwargs))
-    monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
+    fake_test_split(monkeypatch, n_images=1)
+    started, _, _ = fake_wandb(monkeypatch)
 
     assert robustness.main(["--preview", "--output-dir", str(tmp_path)]) is None
     assert started == []  # no run was started
@@ -201,20 +174,8 @@ def test_help_and_preview_titles_show_strengths_cleanly(tmp_path, monkeypatch):
 ])
 def test_bad_input_stops_with_a_clear_message_before_any_wandb_run(
         bad, message, checkpoint, tmp_path, monkeypatch, capsys):
-    import sys
-    import types
-
-    features = datasets.Features({
-        "image": datasets.Image(),
-        "label": datasets.ClassLabel(num_classes=39),
-    })
-    test = datasets.Dataset.from_dict({"image": [leaf(), leaf()], "label": [0, 1]},
-                                      features=features)
-    monkeypatch.setattr(robustness, "load_test_split",
-                        lambda: (test, "image", "label", [f"class {i}" for i in range(39)]))
-    started = []
-    monkeypatch.setitem(sys.modules, "wandb",
-                        types.SimpleNamespace(init=lambda **kwargs: started.append(kwargs)))
+    fake_test_split(monkeypatch)
+    started, _, _ = fake_wandb(monkeypatch)
 
     with pytest.raises(SystemExit):
         robustness.main(["--checkpoint", str(checkpoint), "--output-dir", str(tmp_path)] + bad)
@@ -284,3 +245,43 @@ def test_no_leaf_rate_counts_leaf_photos_read_as_background(capsys):
                                               levels=levels)
     assert without["no_leaf"].isna().all()  # no class given: no rate
     assert "max_no_leaf" not in robustness.summarise(without)
+
+
+def test_two_model_files_with_the_same_name_are_refused(checkpoint, tmp_path, capsys):
+    """outputs/final_model.pt and outputs/new/final_model.pt would both be called final_model,
+    and one would silently replace the other, so only one model would be tested."""
+    other = tmp_path / "new"
+    other.mkdir()
+    copy = other / checkpoint.name
+    copy.write_bytes(checkpoint.read_bytes())
+    paths = [str(checkpoint), str(copy)]
+    assert robustness.duplicate_names(paths) == [checkpoint.stem]
+    assert robustness.duplicate_names([str(checkpoint)]) == []
+    assert robustness.duplicate_names_error([str(checkpoint)]) is None
+    assert robustness.duplicate_names_error(paths).startswith(
+        f"two model files have the same name: {checkpoint.stem}.")
+    with pytest.raises(ValueError, match="same name"):
+        robustness.load_models(paths, "cpu")
+    with pytest.raises(SystemExit):  # stops before loading the data or starting a WandB run
+        robustness.main(["--checkpoint", *paths, "--output-dir", str(tmp_path)])
+    assert "two model files have the same name" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("error", [RuntimeError("out of memory"), KeyboardInterrupt()])
+def test_wandb_run_is_marked_failed_when_the_test_stops_halfway(
+        error, checkpoint, tmp_path, monkeypatch):
+    """A crash or Ctrl+C closes the run as failed (exit code 1), not as a finished result, and
+    the original error still reaches the user."""
+    fake_test_split(monkeypatch)
+    monkeypatch.setattr(robustness, "get_device", lambda: "cpu")
+    started, logged, _ = fake_wandb(monkeypatch)
+
+    def crash(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(robustness, "evaluate_distortions", crash)
+    with pytest.raises(type(error)):
+        robustness.main(["--checkpoint", str(checkpoint), "--output-dir", str(tmp_path)])
+    assert len(started) == 1
+    assert logged["exit_codes"] == [1]  # closed once, as failed, not left running
+

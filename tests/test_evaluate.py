@@ -89,21 +89,45 @@ def test_main_logs_to_wandb(checkpoint, tmp_path, fake_loaders, monkeypatch):
         "test_top5_accuracy": result["top5_accuracy"],
         "test_macro_f1": result["macro_f1"],
     }
-    run.finish.assert_called_once()
+    run.finish.assert_called_once_with()  # no exit code: W&B shows it as finished
 
 
-def test_main_finishes_wandb_run_when_evaluation_fails(checkpoint, tmp_path, monkeypatch):
+@pytest.mark.parametrize("error", [RuntimeError("dataset not available"), KeyboardInterrupt()])
+def test_main_marks_wandb_run_failed_when_evaluation_stops(error, checkpoint, tmp_path,
+                                                           monkeypatch):
+    """A crash or Ctrl+C closes the run as failed (exit code 1), not as a finished result, and
+    the original error still reaches the user."""
     fake_wandb = MagicMock()
     monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
 
     def broken_make_loaders(**kwargs):
-        raise RuntimeError("dataset not available")
+        raise error
 
     monkeypatch.setattr(evaluate, "make_loaders", broken_make_loaders)
 
-    with pytest.raises(RuntimeError, match="dataset not available"):
+    with pytest.raises(type(error)):
         evaluate.main(["--checkpoint", str(checkpoint), "--output-dir", str(tmp_path)])
-    fake_wandb.init.return_value.finish.assert_called_once()
+    fake_wandb.init.return_value.finish.assert_called_once_with(exit_code=1)
+
+
+def test_closing_wandb_runs_closes_every_run_once():
+    """Shared by evaluate, robustness and Grad-CAM: runs are closed as finished when the block
+    completes and as failed when it stops, including runs added inside the block, and the
+    original error is re-raised."""
+    runs = []
+    with evaluate.closing_wandb_runs(runs):
+        runs.append(MagicMock())  # started inside the block, as robustness and Grad-CAM do
+    runs[0].finish.assert_called_once_with()
+
+    runs = [MagicMock()]
+    with pytest.raises(KeyboardInterrupt), evaluate.closing_wandb_runs(runs):
+        runs.append(MagicMock())
+        raise KeyboardInterrupt
+    for run in runs:
+        run.finish.assert_called_once_with(exit_code=1)
+
+    with evaluate.closing_wandb_runs([]):  # --no-wandb: nothing to close
+        pass
 
 
 def test_old_no_clearml_flag_still_turns_logging_off(checkpoint, tmp_path, fake_loaders, monkeypatch):

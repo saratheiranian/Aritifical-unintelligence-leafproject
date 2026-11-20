@@ -2,8 +2,6 @@
 does, so only that one is skipped where it is missing."""
 
 import shutil
-import sys
-import types
 
 import numpy as np
 import pandas as pd
@@ -14,6 +12,7 @@ from torch import nn
 
 from src import gradcam
 from src.models import PlantCNN, ResidualCNN, resnet18_finetune
+from tests.eval_fakes import fake_test_split, fake_wandb
 from tests.test_distortions import leaf
 
 
@@ -176,33 +175,16 @@ def test_explain_class_explains_the_requested_class():
 
 def test_main_saves_figures_and_logs_to_wandb(checkpoint, tmp_path, monkeypatch):
     """main() with a fake dataset, two models and a fake wandb: no download or account needed."""
-    datasets = pytest.importorskip("datasets")
-    from src import data, robustness
+    pytest.importorskip("datasets")
+    from src import data
 
     assert gradcam.SEED == data.SEED
 
-    features = datasets.Features({
-        "image": datasets.Image(),
-        "label": datasets.ClassLabel(num_classes=39),
-    })
-    test = datasets.Dataset.from_dict(
-        {"image": [leaf() for _ in range(6)], "label": [0, 1, 2, 0, 1, 2]}, features=features
-    )
-    monkeypatch.setattr(robustness, "load_test_split",
-                        lambda: (test, "image", "label", [f"class_{i}" for i in range(39)]))
+    fake_test_split(monkeypatch, n_images=6)
     monkeypatch.setattr(gradcam, "get_device", lambda: "cpu")
     second = tmp_path / "other.pt"
     shutil.copy(checkpoint, second)
-
-    logged = {}
-    run = types.SimpleNamespace(id="abc123", url="https://wandb.ai/run", summary={},
-                                log=logged.update, finish=lambda: logged.update(finished=True))
-    fake_wandb = types.SimpleNamespace(
-        init=lambda **kwargs: logged.update(init=kwargs) or run,
-        Table=lambda dataframe: dataframe,
-        Image=lambda path: path,
-    )
-    monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
+    started, logged, run = fake_wandb(monkeypatch)
 
     out = tmp_path / "gradcam"
     table = gradcam.main(["--checkpoint", str(checkpoint), str(second), "--output-dir", str(out),
@@ -215,7 +197,7 @@ def test_main_saves_figures_and_logs_to_wandb(checkpoint, tmp_path, monkeypatch)
                  "gradcam_sanity_summary.csv"]:
         assert (out / name).exists(), name
     assert set(table.columns) == {"test_index", "kind", "true", "predicted", "confidence"}
-    assert logged["init"]["tags"] == ["eval", "gradcam"]
+    assert started[0]["tags"] == ["eval", "gradcam"]
     assert {"gradcam/examples", "gradcam/mistakes", "gradcam/models", "gradcam/distortions",
             "gradcam/mistakes_table", "gradcam/confused_pairs"} <= set(logged)
     assert run.summary["gradcam/scanned_images"] == 6
@@ -230,30 +212,14 @@ def test_main_saves_figures_and_logs_to_wandb(checkpoint, tmp_path, monkeypatch)
     summary = pd.read_csv(out / "gradcam_attention_summary.csv")
     assert len(summary) == 4  # two models and the first one with two sets of random weights
     assert summary["model"].iloc[-1].endswith("(random weights, seed 43)")
-    assert logged["finished"]
+    assert logged["exit_codes"] == [None]  # closed once, as a finished run
 
 
 def fake_run_setup(monkeypatch, n_images=6):
-    """Fake test split and a fake wandb that records what is started and logged."""
-    datasets = pytest.importorskip("datasets")
-    from src import robustness
-
-    features = datasets.Features({
-        "image": datasets.Image(),
-        "label": datasets.ClassLabel(num_classes=39),
-    })
-    test = datasets.Dataset.from_dict(
-        {"image": [leaf() for _ in range(n_images)], "label": [i % 3 for i in range(n_images)]},
-        features=features)
-    monkeypatch.setattr(robustness, "load_test_split",
-                        lambda: (test, "image", "label", [f"class_{i}" for i in range(39)]))
+    """Fake test split on the CPU and a fake wandb that records what is started and logged."""
+    fake_test_split(monkeypatch, n_images)
     monkeypatch.setattr(gradcam, "get_device", lambda: "cpu")
-    started, logged = [], {}
-    run = types.SimpleNamespace(id="abc123", url="https://wandb.ai/run", summary={},
-                                log=logged.update, finish=lambda: logged.update(finished=True))
-    monkeypatch.setitem(sys.modules, "wandb", types.SimpleNamespace(
-        init=lambda **kwargs: started.append(kwargs) or run,
-        Table=lambda dataframe: dataframe, Image=lambda path: path))
+    started, logged, _ = fake_wandb(monkeypatch)
     return started, logged
 
 
@@ -305,7 +271,7 @@ def test_n_distorted_0_skips_the_distortion_figure(checkpoint, tmp_path, monkeyp
     assert not (tmp_path / "gradcam_distortions.png").exists()
     assert (tmp_path / "gradcam_examples.png").exists()
     assert "gradcam/distortions" not in logged
-    assert len(started) == 1 and logged["finished"]
+    assert len(started) == 1 and logged["exit_codes"] == [None]
 
 
 def leaf_with_shadow():
@@ -447,7 +413,7 @@ def test_attention_sample_0_skips_the_measurements(checkpoint, tmp_path, monkeyp
                   "--n-correct", "2", "--n-wrong", "2", "--attention-sample", "0"])
     assert not (tmp_path / "gradcam_attention.csv").exists()
     assert "gradcam/attention_summary" not in logged
-    assert len(started) == 1 and logged["finished"]
+    assert len(started) == 1 and logged["exit_codes"] == [None]
 
 
 def test_leaf_mask_drops_small_specks():
@@ -499,7 +465,7 @@ def test_no_plausible_leaf_masks_measures_nothing(checkpoint, tmp_path, monkeypa
                   "--n-correct", "2", "--n-wrong", "2"])
     assert "nothing measured" in capsys.readouterr().out
     assert not (tmp_path / "gradcam_attention.csv").exists()
-    assert len(started) == 1 and logged["finished"]
+    assert len(started) == 1 and logged["exit_codes"] == [None]
 
 
 def test_leaf_mask_leaves_out_a_coloured_background():
@@ -580,4 +546,33 @@ def test_summarise_sanity_gives_one_row_per_seed():
     assert list(sanity["rank_corr"]) == pytest.approx([0.2, 0.5])
     assert list(sanity["heat_on_leaf"]) == pytest.approx([0.45, 0.6])
     assert (sanity["ci_low"] <= sanity["rank_corr"]).all()
+
+
+def test_two_model_files_with_the_same_name_are_refused(checkpoint, tmp_path, monkeypatch, capsys):
+    other = tmp_path / "new"
+    other.mkdir()
+    copy = other / checkpoint.name
+    copy.write_bytes(checkpoint.read_bytes())
+    started, _ = fake_run_setup(monkeypatch)
+    with pytest.raises(SystemExit):
+        gradcam.main(["--checkpoint", str(checkpoint), str(copy), "--output-dir", str(tmp_path)])
+    assert "two model files have the same name" in capsys.readouterr().err
+    assert started == []
+
+
+@pytest.mark.parametrize("error", [RuntimeError("out of memory"), KeyboardInterrupt()])
+def test_wandb_run_is_marked_failed_when_grad_cam_stops_halfway(
+        error, checkpoint, tmp_path, monkeypatch):
+    """A crash or Ctrl+C closes the run as failed (exit code 1), not as a finished result."""
+    started, logged = fake_run_setup(monkeypatch)
+
+    def crash(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(gradcam, "plot_examples", crash)
+    with pytest.raises(type(error)):
+        gradcam.main(["--checkpoint", str(checkpoint), "--output-dir", str(tmp_path),
+                      "--n-correct", "2", "--n-wrong", "2"])
+    assert len(started) == 1
+    assert logged["exit_codes"] == [1]  # closed once, as failed, not left running
 

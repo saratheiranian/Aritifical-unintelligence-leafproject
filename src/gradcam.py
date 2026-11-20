@@ -598,7 +598,9 @@ def plot_mistakes(rows, class_names, path, model_name=""):
 # ---------------------------------------------------------------------------------------------
 
 
-def main(argv=None):
+def run_gradcam(argv, started):
+    """Grad-CAM from the command line. The W&B run, once started, is added to `started`, so that
+    main() can close it."""
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     p.add_argument("--checkpoint", nargs="+", default=["outputs/final_model.pt"],
                    help="one or more model files; the first one picks the examples")
@@ -634,6 +636,10 @@ def main(argv=None):
         p.error(f"checkpoint not found: {', '.join(missing)}")
 
     from src import robustness  # needs the dataset library, so imported only here
+
+    error = robustness.duplicate_names_error(args.checkpoint)
+    if error:
+        p.error(error)
 
     test, image_col, label_col, class_names = robustness.load_test_split()
     device = get_device()
@@ -674,6 +680,7 @@ def main(argv=None):
         run = wandb.init(entity=WANDB_ENTITY, project=WANDB_PROJECT, name=args.run_name,
                          job_type="eval", tags=["eval", "gradcam"], config=vars(args))
         print(f"WandB run ID: {run.id}")
+        started.append(run)
     images = [test[int(i)][image_col].convert("RGB") for i in chosen]
     true = [int(labels[i]) for i in correct + wrong]
 
@@ -783,8 +790,18 @@ def main(argv=None):
             if value is not None:
                 run.summary[f"gradcam/{key}"] = value
         print(f"Logged to WandB run {run.id}: {run.url}")
-        run.finish()
     return table
+
+
+def main(argv=None):
+    """Runs Grad-CAM and closes its W&B run at the end: as finished, or as failed if something
+    went wrong halfway (see closing_wandb_runs in evaluate.py)."""
+    # needs the dataset library, so imported only here, like robustness in run_gradcam
+    from src.evaluate import closing_wandb_runs
+
+    started = []
+    with closing_wandb_runs(started):
+        return run_gradcam(argv, started)
 
 
 if __name__ == "__main__":
