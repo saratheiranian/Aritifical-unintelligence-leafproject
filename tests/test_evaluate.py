@@ -110,6 +110,26 @@ def test_main_marks_wandb_run_failed_when_evaluation_stops(error, checkpoint, tm
     fake_wandb.init.return_value.finish.assert_called_once_with(exit_code=1)
 
 
+def test_closing_wandb_runs_closes_every_run_once():
+    """Shared by evaluate, robustness and Grad-CAM: runs are closed as finished when the block
+    completes and as failed when it stops, including runs added inside the block, and the
+    original error is re-raised."""
+    runs = []
+    with evaluate.closing_wandb_runs(runs):
+        runs.append(MagicMock())  # started inside the block, as robustness and Grad-CAM do
+    runs[0].finish.assert_called_once_with()
+
+    runs = [MagicMock()]
+    with pytest.raises(KeyboardInterrupt), evaluate.closing_wandb_runs(runs):
+        runs.append(MagicMock())
+        raise KeyboardInterrupt
+    for run in runs:
+        run.finish.assert_called_once_with(exit_code=1)
+
+    with evaluate.closing_wandb_runs([]):  # --no-wandb: nothing to close
+        pass
+
+
 def test_old_no_clearml_flag_still_turns_logging_off(checkpoint, tmp_path, fake_loaders, monkeypatch):
     fake_wandb = MagicMock()
     monkeypatch.setitem(sys.modules, "wandb", fake_wandb)

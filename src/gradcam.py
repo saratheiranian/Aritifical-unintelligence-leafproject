@@ -794,19 +794,14 @@ def run_gradcam(argv, started):
 
 
 def main(argv=None):
-    """Closes the W&B run even if something fails halfway, so no run is left marked as running
-    in the team's project. A run that crashed is marked as failed, so it is not mistaken for a
-    finished result."""
+    """Runs Grad-CAM and closes its W&B run at the end: as finished, or as failed if something
+    went wrong halfway (see closing_wandb_runs in evaluate.py)."""
+    # needs the dataset library, so imported only here, like robustness in run_gradcam
+    from src.evaluate import closing_wandb_runs
+
     started = []
-    try:
-        table = run_gradcam(argv, started)
-    except BaseException:  # also Ctrl+C: the run did not finish either
-        for run in started:
-            run.finish(exit_code=1)
-        raise
-    for run in started:
-        run.finish()
-    return table
+    with closing_wandb_runs(started):
+        return run_gradcam(argv, started)
 
 
 if __name__ == "__main__":

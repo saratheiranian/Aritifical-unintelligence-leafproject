@@ -9,6 +9,7 @@ and logs them to the team's Weights & Biases project (src/config.py).
 
 import argparse
 import os
+from contextlib import contextmanager
 
 import matplotlib
 
@@ -81,17 +82,26 @@ def main(argv=None):
                          job_type="eval", tags=["eval", "test"], config=vars(args))
         print(f"W&B run ID: {run.id}")
 
-    # close the W&B run even if evaluation fails halfway, so it is not left running; a run that
-    # crashed is marked as failed, so it is not mistaken for a finished result
+    with closing_wandb_runs([run] if run is not None else []):  # no run with --no-wandb
+        return run_evaluation(args, run)
+
+
+@contextmanager
+def closing_wandb_runs(runs):
+    """Close every W&B run in `runs` when the block ends, so none is left marked as running.
+
+    A block that completes closes them normally. A block that raises an error, or is stopped with
+    Ctrl+C, closes them as failed (exit code 1), so a crashed run is not mistaken for a finished
+    result; the error still reaches the user. Runs added to the list inside the block are closed
+    too. Shared by evaluate.py, robustness.py and gradcam.py."""
     try:
-        result = run_evaluation(args, run)
+        yield runs
     except BaseException:  # also Ctrl+C: the run did not finish either
-        if run:
+        for run in runs:
             run.finish(exit_code=1)
         raise
-    if run:
+    for run in runs:
         run.finish()
-    return result
 
 
 def run_evaluation(args, run=None):

@@ -35,7 +35,7 @@ from sklearn.metrics import f1_score
 from src.config import WANDB_ENTITY, WANDB_PROJECT
 from src.data import SEED, load_full_dataset, split_dataset
 from src.distortions import DISTORTIONS, apply_distortion
-from src.evaluate import load_checkpoint
+from src.evaluate import closing_wandb_runs, load_checkpoint
 from src.models import get_device
 from src.transforms import get_transforms
 
@@ -380,19 +380,11 @@ def run_robustness(argv, started):
 
 
 def main(argv=None):
-    """Closes the W&B run even if something fails halfway, so no run is left marked as running
-    in the team's project. A run that crashed is marked as failed, so it is not mistaken for a
-    finished result."""
+    """Runs the test and closes its W&B run at the end: as finished, or as failed if something
+    went wrong halfway (see closing_wandb_runs in evaluate.py)."""
     started = []
-    try:
-        results = run_robustness(argv, started)
-    except BaseException:  # also Ctrl+C: the run did not finish either
-        for run in started:
-            run.finish(exit_code=1)
-        raise
-    for run in started:
-        run.finish()
-    return results
+    with closing_wandb_runs(started):
+        return run_robustness(argv, started)
 
 
 if __name__ == "__main__":
