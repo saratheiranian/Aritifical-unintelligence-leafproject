@@ -95,6 +95,7 @@ def main(argv=None):
 
         run = wandb.init(entity=WANDB_ENTITY, project=WANDB_PROJECT, name="data-quality",
                          job_type="data", tags=["data", "quality"], config=vars(args))
+        print(f"WandB run ID: {run.id}")
 
     with closing_wandb_runs([run] if run is not None else []):  # no run with --no-wandb
         return run_quality_checks(args, run)
@@ -170,7 +171,7 @@ def run_quality_checks(args, run=None):
     fig2.tight_layout()
     fig2.savefig(os.path.join(args.output_dir, "quality_brightness_per_class.png"), dpi=150)
 
-    if run:
+    if run is not None:
         import wandb
 
         run.summary.update({
@@ -183,6 +184,8 @@ def run_quality_checks(args, run=None):
         run.log({
             "quality/image_sizes": wandb.Table(dataframe=sizes),
             "quality/brightness_per_class": wandb.Table(dataframe=per_class.reset_index()),
+            "quality/duplicates": wandb.Table(dataframe=dup_table),
+            "quality/flagged_images": wandb.Table(dataframe=flagged),
             "quality/brightness": wandb.Image(fig1),
             "quality/brightness_per_class_chart": wandb.Image(fig2),
         })

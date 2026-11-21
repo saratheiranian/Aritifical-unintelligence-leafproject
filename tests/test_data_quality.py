@@ -140,6 +140,7 @@ def test_main_logs_results_to_wandb(quality_dataset, tmp_path, monkeypatch):
     assert summary["duplicate_groups"] >= 1 and summary["images_checked"] == len(quality_dataset)
     logged = run.log.call_args.args[0]
     assert set(logged) == {"quality/image_sizes", "quality/brightness_per_class",
+                           "quality/duplicates", "quality/flagged_images",
                            "quality/brightness", "quality/brightness_per_class_chart"}
     run.finish.assert_called_once()
 

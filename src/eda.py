@@ -42,6 +42,7 @@ def main(argv=None):
 
         run = wandb.init(entity=WANDB_ENTITY, project=WANDB_PROJECT, name="eda", job_type="data",
                          tags=["data", "eda"], config=vars(args))
+        print(f"WandB run ID: {run.id}")
 
     with closing_wandb_runs([run] if run is not None else []):  # no run with --no-wandb
         return run_eda(args, run)
@@ -92,7 +93,7 @@ def run_eda(args, run=None):
     fig3.savefig(os.path.join(args.output_dir, "split_check.png"), dpi=150)
     print({name: len(split) for name, split in splits.items()})
 
-    if run:
+    if run is not None:
         import wandb
 
         run.summary.update({"images": len(ds), "classes": len(dist),
