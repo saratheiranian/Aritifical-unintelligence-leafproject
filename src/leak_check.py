@@ -5,7 +5,7 @@ a copy in the training set, the model may simply remember it. This script scores
 on the test images WITH a duplicate in train/val ("leaked") and on the rest ("clean"), so the report
 can say how much (if at all) the leak changes the headline accuracy.
 
-    python -m src.data_quality --no-clearml          # once: writes outputs/eda/quality_duplicates.csv
+    python -m src.data_quality --no-wandb            # once: writes outputs/eda/quality_duplicates.csv
     python -m src.leak_check --clearml-model-id c7b1c372f02e41ba9ec5f3b321e7183d
     python -m src.leak_check --checkpoint outputs/best_model.pt
 """

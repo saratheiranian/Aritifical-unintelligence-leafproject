@@ -1,6 +1,7 @@
 """Exploratory data analysis: class distribution, sample images, split check.
 
-Saves the plots to outputs/eda/ (use them in the report) and logs them to ClearML.
+Saves the plots to outputs/eda/ (use them in the report) and logs them to the team's Weights &
+Biases project (src/config.py); add --no-wandb to skip that.
 
     python -m src.eda
 """
@@ -15,8 +16,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from src.config import WANDB_ENTITY, WANDB_PROJECT
 from src.data import load_full_dataset, split_dataset
-from src.train import CLEARML_PROJECT
+from src.evaluate import closing_wandb_runs
 
 
 def class_distribution(ds, label_col):
@@ -28,16 +30,26 @@ def class_distribution(ds, label_col):
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--output-dir", default="outputs/eda")
-    p.add_argument("--no-clearml", action="store_true")
+    p.add_argument("--no-wandb", action="store_true", help="do not log to Weights & Biases")
+    # old name, kept so earlier commands still work
+    p.add_argument("--no-clearml", dest="no_wandb", action="store_true", help=argparse.SUPPRESS)
     args = p.parse_args(argv)
     os.makedirs(args.output_dir, exist_ok=True)
 
-    task = None
-    if not args.no_clearml:
-        from clearml import Task
+    run = None
+    if not args.no_wandb:
+        import wandb
 
-        task = Task.init(project_name=CLEARML_PROJECT, task_name="eda", tags=["data"])
+        run = wandb.init(entity=WANDB_ENTITY, project=WANDB_PROJECT, name="eda", job_type="data",
+                         tags=["data", "eda"], config=vars(args))
+        print(f"WandB run ID: {run.id}")
 
+    with closing_wandb_runs([run] if run is not None else []):  # no run with --no-wandb
+        return run_eda(args, run)
+
+
+def run_eda(args, run=None):
+    """The checks themselves; logs to `run` if one is given (closed by main)."""
     ds, image_col, label_col = load_full_dataset()
     print(ds)
     dist = class_distribution(ds, label_col).sort_values()
@@ -81,10 +93,14 @@ def main(argv=None):
     fig3.savefig(os.path.join(args.output_dir, "split_check.png"), dpi=150)
     print({name: len(split) for name, split in splits.items()})
 
-    if task:
-        logger = task.get_logger()
-        for title, fig in [("Class distribution", fig1), ("Samples", fig2), ("Split check", fig3)]:
-            logger.report_matplotlib_figure(title, "eda", figure=fig, iteration=0)
+    if run is not None:
+        import wandb
+
+        run.summary.update({"images": len(ds), "classes": len(dist),
+                            "smallest_class_images": int(dist.iloc[0]),
+                            "largest_class_images": int(dist.iloc[-1])})
+        run.log({f"eda/{name}": wandb.Image(fig) for name, fig in
+                 [("class_distribution", fig1), ("samples", fig2), ("split_check", fig3)]})
 
 
 if __name__ == "__main__":
