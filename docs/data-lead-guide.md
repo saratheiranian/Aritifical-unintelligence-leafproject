@@ -18,8 +18,8 @@ python -m src.register_dataset    # ClearML Dataset "plant_village_split" with t
 ## 2. Image quality checks (new, `src/data_quality.py`)
 
 ```bash
-python -m src.data_quality --sample 5000 --no-clearml   # quick test, about a minute
-python -m src.data_quality                              # all images, logged to ClearML
+python -m src.data_quality --sample 5000 --no-wandb     # quick test, about a minute
+python -m src.data_quality                              # all images, logged to W&B
 ```
 
 Outputs in `outputs/eda/`:
