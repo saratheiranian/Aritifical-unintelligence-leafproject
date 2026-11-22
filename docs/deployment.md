@@ -64,6 +64,62 @@ Command used (run from the repo root, with a leaf photo saved as `outputs/leaf.j
 
     python -c "import time; from PIL import Image; from src.inference import Predictor; t0=time.perf_counter(); p=Predictor('outputs/final_model.pt', device='cpu'); t1=time.perf_counter(); img=Image.open('outputs/leaf.jpg').convert('RGB'); p.top_k(img,5); t2=time.perf_counter(); [p.top_k(img,5) for _ in range(20)]; t3=time.perf_counter(); print(f'Model load: {t1-t0:.2f} s'); print(f'First prediction: {t2-t1:.3f} s'); print(f'Average of 20 predictions: {(t3-t2)/20:.3f} s')"
 
+
+## Colab demo (17 Nov)
+
+The teaching team's GAP_ML_Tools guide gives two deployment routes instead of a Space: Colab for
+demo day (temporary public link) and Render.com for a permanent link. The Colab route works:
+
+- Notebook: `notebooks/colab_demo.ipynb`. Open it in Colab, run cell 1 once, then cell 2. Running cell 1 again does not clone the repo a second time, and after Runtime > Restart session only cell 2 is needed.
+- Cell 1 clones the repo and installs `app/requirements.txt`. Cell 2 loads the model from
+  `Media1234/plant-disease-cnn` (via `HF_MODEL_REPO`) and starts the app with `share=True`.
+- Gradio prints a public `https://....gradio.live` link that works from any network, but only while the
+  notebook runs: free Colab stops after a while idle and
+  after at most about 12 hours, and the link changes on every start. So start it just before the demo
+  and share the link (or a QR code) only after the last start.
+- Tested from an iPhone on 17 Nov: a tomato leaf photo gave Tomato: Early blight (80%).
+- The example gallery and the "training images of the predicted class" are empty in Colab,
+  because `app/examples` and `app/class_examples` are made locally by `src/make_app_assets` and
+  are not in Git.
+
+## Phone test (17 Nov)
+
+The local app (`GRADIO_SERVER_NAME=0.0.0.0`) opened on an iPhone over the KCL Wi-Fi:
+
+| Test | Result |
+|---|---|
+| Layout | Fits the screen in one column |
+| Example image (grape) | Grape: Esca (Black Measles), 100% |
+| Hand photo | Background without leaves, 99.9% |
+| Batch with two photos (tomato leaf, cat) | Tomato: Early blight; Background without leaves |
+| About tab | Readable, shows the PlantDoc limitation |
+
+Wide tables do not fit on a phone: the Probabilities table and the Batch table's probability and
+"Low confidence" columns need a sideways swipe.
+
+Real-leaf photo (17 Nov, Colab link on an iPhone): a dry maple leaf held in a hand outdoors, with
+fallen leaves behind it, gave Background without leaves (54%), then Corn: Cercospora leaf spot (25%).
+Maple is not one of the 39 classes, and the photo is a field photo, so this matches the PlantDoc
+result. The low-confidence warning did not appear, because 54% is just above the 50% threshold.
+
+## Render (permanent link, 18 Nov)
+
+Live at https://plant-disease-classifier-7w10.onrender.com (Render free web service).
+
+- Source: the public GitHub repo, branch `main` (no auto-deploy: press "Manual Deploy" after changes).
+- Build: `pip install -r app/requirements.txt`. Start: `python app/app.py`.
+- Environment: `PYTHON_VERSION=3.11.10`, `HF_MODEL_REPO=Media1234/plant-disease-cnn`,
+  `GRADIO_SERVER_NAME=0.0.0.0`, `GRADIO_SERVER_PORT=10000`.
+- Free plan: 0.1 CPU and 512 MB RAM, which is enough for the CNN. It sleeps after 15 minutes without
+  visitors, so the first visit after that takes 1 to 2 minutes. Flagged predictions are saved on Render's temporary disk, so they are lost when the app sleeps, restarts or is redeployed.
+- Tested on 18 Nov from a laptop and an iPhone. The same tomato photo as in the Colab test gave
+  Tomato: Early blight (80.2%), the same as on Colab. A Google photo of a tomato sprig with several
+  leaflets gave Raspberry: healthy (79%), another case of a photo unlike the single-leaf training images.
+
 ## Next
 
-- Deploy the Space once the teaching team confirms the deployment option.
+- After the code freeze: tag the code (e.g. `demo-v1`) and clone that tag in the notebook, so a change to
+  `main` on demo day cannot change the demo.
+- Batch tab: rotate phone photos with `ImageOps.exif_transpose`, as the single-image tab already does
+  (separate PR).
+- Example images on Render and Colab: upload them to the Hugging Face repo and download them at start-up.
