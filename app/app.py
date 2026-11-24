@@ -58,7 +58,7 @@ def find_checkpoints(cli_paths):
         # the example images are git-ignored, so they are kept in the model repo as well
         try:
             snapshot_download(repo, allow_patterns=["examples/*", "class_examples/*"], local_dir=HERE)
-        except Exception as e:  # the galleries are optional, so the app still starts without them
+        except Exception as e:  # noqa: BLE001 - the galleries are optional, so the app still starts without them
             print(f"Warning: could not download the example images ({e}), so the galleries will be empty")
         files = [f for f in list_repo_files(repo) if f.endswith(".pt")]
         return {Path(f).stem: hf_hub_download(repo, f) for f in files}
