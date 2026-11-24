@@ -32,6 +32,18 @@ Files that would be uploaded to the Space:
 - `python -m src.publish_model --repo-id Media1234/plant-disease-cnn --checkpoint outputs/final_model.pt`
 - The model is on the Hugging Face Hub as `cnn.pt`: https://huggingface.co/Media1234/plant-disease-cnn
 
+## Final model: ResNet18 (22 Nov)
+
+- The app now runs ResNet18, the better of Amrit's two final candidates (validation accuracy 99.25% at
+  epoch 12, 128x128 input, 39 classes). Sara's field test (#53) found it best on field photos too.
+- Uploaded with `python -m src.publish_model --repo-id Media1234/plant-disease-cnn --checkpoint outputs/resnet18.pt`,
+  so the Hub now has `resnet18.pt`. The old `cnn.pt` was deleted from the Hub, so the app shows only this model.
+- CPU timing with the same laptop and command as in "CPU timing" below, using `outputs/resnet18.pt`:
+  model load 0.25 s, first prediction 0.104 s, average of 20 predictions 0.013 s. Slower than the CNN,
+  but still far below the 2 s requirement.
+- Tested on the local app, on Render and on an iPhone: an Apple scab leaf gave Apple scab (100%), and an
+  outdoor leaf gave Background without leaves (96%), the known field-photo limitation.
+
 ## Space creation blocked (10 Nov)
 
 - The full deploy command:
@@ -78,9 +90,9 @@ demo day (temporary public link) and Render.com for a permanent link. The Colab 
   after at most about 12 hours, and the link changes on every start. So start it just before the demo
   and share the link (or a QR code) only after the last start.
 - Tested from an iPhone on 17 Nov: a tomato leaf photo gave Tomato: Early blight (80%).
-- The example gallery and the "training images of the predicted class" are empty in Colab,
-  because `app/examples` and `app/class_examples` are made locally by `src/make_app_assets` and
-  are not in Git.
+- The example gallery and the "training images of the predicted class" were empty in Colab at first,
+  because `app/examples` and `app/class_examples` are not in Git. They are now also in the Hugging Face
+  repo, and the app downloads them at start-up (PR #55).
 
 ## Phone test (17 Nov)
 
