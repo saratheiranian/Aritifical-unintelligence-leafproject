@@ -5,6 +5,41 @@ sections. Newest first. Runs up to 14 Nov were tracked on app.clear.ml (project 
 while the KCL ClearML server was down; from 14 Nov runs are tracked on the team's Weights & Biases
 project (`src/config.py`), and the W&B run IDs are given with each result.
 
+## 18 Nov 2026: field test of the two final candidates (Sara, MacBook, Apple GPU)
+
+```bash
+python -m src.field_test --checkpoint outputs/final_resnet18/best_model.pt --output-dir outputs/final_resnet18/field --wandb
+python -m src.field_test --checkpoint outputs/final_depth5/best_model.pt --output-dir outputs/final_depth5/field --wandb
+```
+
+Amrit trained two final candidates on all the training data, based on his sweep: a pretrained ResNet18
+(best validation accuracy 99.25% at epoch 12) and the from-scratch CNN with depth 5 (98.62% at epoch 22).
+Both were tested on the same 236 PlantDoc field photos as the 99% model (10 Nov). W&B runs: ResNet18
+`rbccs1x4`, depth-5 CNN `9428o2zs`. Lab test results are in Amrit's entry; this entry covers field photos
+only.
+
+| Field photos (236, 27 classes) | 99% CNN (10 Nov) | Depth-5 CNN | ResNet18 |
+| --- | --- | --- | --- |
+| Accuracy (all 39 classes) | 14.4% | 13.1% | **16.9%** |
+| Accuracy (shared classes only) | 17.8% | 17.8% | **21.6%** |
+| Top-5 accuracy | 40.7% | 44.9% | **51.7%** |
+| Macro F1 | 0.128 | 0.145 | **0.181** |
+| Classes never recognised (recall 0) | 13 of 27 | 10 of 27 | 11 of 27 |
+
+- **ResNet18 is the best model on field photos** of all models that were not fine-tuned on PlantDoc: higher
+  on every measure, most clearly top-5 (+11 points over the 99% model) and macro F1 (0.181 vs 0.128). Its
+  ImageNet pretraining, on everyday photos with varied backgrounds and lighting, seems to transfer better
+  to field photos than features learned from lab photos only. The accuracy gain is 6 photos out of 236,
+  so top-5 and macro F1 are the more convincing evidence.
+- **The depth-5 CNN is about level with the 99% model**: 3 photos fewer correct, but better top-5 and F1,
+  and it recognises at least one photo of more classes (17 vs 14).
+- **Both still fail on field photos overall** (13-17% against 99% on lab photos; chance is 2.6%). Classes
+  never recognised by either new model include Apple cedar rust, Apple healthy, Grape black rot and four
+  Tomato classes (bacterial spot, yellow leaf curl virus, mosaic virus, healthy).
+- Fine-tuning on PlantDoc training photos (12 Nov) took the 99% model to 22.9%, still the best field result.
+
+From the field-photo side, ResNet18 is the better final model.
+
 ## 16 Nov 2026: noise augmentation (Sara, MacBook, Apple GPU)
 
 ```bash
