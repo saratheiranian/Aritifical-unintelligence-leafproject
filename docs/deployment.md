@@ -78,9 +78,9 @@ demo day (temporary public link) and Render.com for a permanent link. The Colab 
   after at most about 12 hours, and the link changes on every start. So start it just before the demo
   and share the link (or a QR code) only after the last start.
 - Tested from an iPhone on 17 Nov: a tomato leaf photo gave Tomato: Early blight (80%).
-- The example gallery and the "training images of the predicted class" are empty in Colab,
-  because `app/examples` and `app/class_examples` are made locally by `src/make_app_assets` and
-  are not in Git.
+- The example gallery and the "training images of the predicted class" were empty in Colab at first,
+  because `app/examples` and `app/class_examples` are not in Git. They are now also in the Hugging Face
+  repo, and the app downloads them at start-up (PR #55).
 
 ## Phone test (17 Nov)
 
@@ -124,3 +124,4 @@ Live at https://plant-disease-classifier-7w10.onrender.com (Render free web serv
   `main` on demo day cannot change the demo.
 - Batch tab: rotate phone photos with `ImageOps.exif_transpose`, as the single-image tab already does
   (separate PR).
+  
