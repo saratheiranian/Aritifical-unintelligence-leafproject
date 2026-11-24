@@ -42,16 +42,18 @@ def bright_patch():
 
 
 def test_target_layer_is_the_last_convolutional_stage():
-    cnn = PlantCNN(depth=3)
-    assert gradcam.target_layer(cnn) is cnn.features
-    res = ResidualCNN(depth=2)
-    assert gradcam.target_layer(res) is res.features
-    resnet = resnet18_finetune(pretrained=False)
-    assert gradcam.target_layer(resnet) is resnet.layer4
-    plain = nn.Sequential(nn.Conv2d(3, 4, 3), nn.ReLU(), nn.Conv2d(4, 8, 3), nn.Flatten())
-    assert gradcam.target_layer(plain) is plain[2]
-    with pytest.raises(ValueError):
-        gradcam.target_layer(nn.Sequential(nn.Flatten(), nn.Linear(3, 2)))
+  cnn = PlantCNN(depth=3)
+  assert gradcam.target_layer(cnn) is cnn.features
+  res = ResidualCNN(depth=2)
+  assert gradcam.target_layer(res) is res.features
+  resnet, _, _, _ = resnet18_finetune(torch.device("cpu"))
+  assert gradcam.target_layer(resnet) is resnet.layer4
+  plain = nn.Sequential(
+      nn.Conv2d(3, 4, 3), nn.ReLU(), nn.Conv2d(4, 8, 3), nn.Flatten()
+  )
+  assert gradcam.target_layer(plain) is plain[2]
+  with pytest.raises(ValueError):
+    gradcam.target_layer(nn.Sequential(nn.Flatten(), nn.Linear(3, 2)))
 
 
 def test_heatmap_points_at_the_evidence():
@@ -85,9 +87,13 @@ def test_grad_cam_leaves_the_model_untouched():
 
 
 def test_grad_cam_works_through_a_frozen_backbone():
-    model = resnet18_finetune(pretrained=False, freeze_backbone=True).eval()
-    cams, _ = gradcam.grad_cam(model, torch.randn(1, 3, 64, 64))
-    assert cams.shape == (1, 64, 64)
+  model, _, _, _ = resnet18_finetune(torch.device("cpu"))
+  for name, param in model.named_parameters():
+    if not name.startswith("fc."):
+      param.requires_grad = False
+  model.eval()
+  cams, _ = gradcam.grad_cam(model, torch.randn(1, 3, 64, 64))
+  assert cams.shape == (1, 64, 64)
 
 
 def test_overlay_is_bright_where_the_heatmap_is_hot():

@@ -117,18 +117,30 @@ def test_main_stops_early_when_validation_stalls(fast_train, capsys):
     assert len(re.findall(r"^epoch \d+", out, flags=re.MULTILINE)) == 2
 
 
-def test_main_trains_resnet18_with_frozen_backbone(fast_train, tmp_path, monkeypatch):
-    real_build = models.build_model
-    # never download the ImageNet weights in a test
-    monkeypatch.setattr(
-        "src.train.build_model", lambda arch, **kw: real_build(arch, **{**kw, "pretrained": False})
+def test_main_trains_resnet18_with_frozen_backbone(
+    fast_train, tmp_path, monkeypatch
+):
+  from torchvision import models as tv_models
+
+  def fake_resnet18_finetune(
+      device, lr=0.001, momentum=0.9, step_size=7, gamma=0.1
+  ):
+    m = tv_models.resnet18(weights=None)
+    m.fc = nn.Linear(m.fc.in_features, NUM_CLASSES)
+    m = m.to(device)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.SGD(m.parameters(), lr=lr, momentum=momentum)
+    scheduler = torch.optim.lr_scheduler.StepLR(
+        optimizer, step_size=step_size, gamma=gamma
     )
-    fast_train("--arch", "resnet18", "--freeze-backbone", "--epochs", "1")
-    ckpt = torch.load(tmp_path / "best_model.pt", map_location="cpu")
-    assert ckpt["arch"] == "resnet18"
-    # the saved copy must never ask to re-download pretrained weights
-    assert ckpt["model_kwargs"]["pretrained"] is False
-    assert ckpt["model_kwargs"]["freeze_backbone"] is True
+    return m, criterion, optimizer, scheduler
+
+  monkeypatch.setattr("src.models.resnet18_finetune", fake_resnet18_finetune)
+  fast_train("--arch", "resnet18", "--freeze-backbone", "--epochs", "1")
+  ckpt = torch.load(tmp_path / "best_model.pt", map_location="cpu")
+  assert ckpt["arch"] == "resnet18"
+  assert ckpt["model_kwargs"]["pretrained"] is False
+  assert ckpt["model_kwargs"]["freeze_backbone"] is True
 
 
 def test_main_logs_every_epoch_to_wandb(fast_train, monkeypatch):
