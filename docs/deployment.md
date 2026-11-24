@@ -124,4 +124,3 @@ Live at https://plant-disease-classifier-7w10.onrender.com (Render free web serv
   `main` on demo day cannot change the demo.
 - Batch tab: rotate phone photos with `ImageOps.exif_transpose`, as the single-image tab already does
   (separate PR).
-  
