@@ -53,8 +53,10 @@ def find_checkpoints(cli_paths):
         return {p.stem: str(p) for p in local}
     repo = os.environ.get("HF_MODEL_REPO")
     if repo:
-        from huggingface_hub import hf_hub_download, list_repo_files
+        from huggingface_hub import hf_hub_download, list_repo_files, snapshot_download
 
+        # the example images are git-ignored, so they are kept in the model repo as well
+        snapshot_download(repo, allow_patterns=["examples/*", "class_examples/*"], local_dir=HERE)
         files = [f for f in list_repo_files(repo) if f.endswith(".pt")]
         return {Path(f).stem: hf_hub_download(repo, f) for f in files}
     raise SystemExit("No model found: pass --checkpoint, add .pt files to models/, or set HF_MODEL_REPO")

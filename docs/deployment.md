@@ -109,7 +109,9 @@ Live at https://plant-disease-classifier-7w10.onrender.com (Render free web serv
 - Source: the public GitHub repo, branch `main` (no auto-deploy: press "Manual Deploy" after changes).
 - Build: `pip install -r app/requirements.txt`. Start: `python app/app.py`.
 - Environment: `PYTHON_VERSION=3.11.10`, `HF_MODEL_REPO=Media1234/plant-disease-cnn`,
-  `GRADIO_SERVER_NAME=0.0.0.0`, `GRADIO_SERVER_PORT=10000`.
+    `GRADIO_SERVER_NAME=0.0.0.0`, `GRADIO_SERVER_PORT=10000`.
+- Example images: `app/examples/` and `app/class_examples/` are git-ignored, so they are also in the
+  Hugging Face repo, and the app downloads them at start-up when `HF_MODEL_REPO` is set.
 - Free plan: 0.1 CPU and 512 MB RAM, which is enough for the CNN. It sleeps after 15 minutes without
   visitors, so the first visit after that takes 1 to 2 minutes. Flagged predictions are saved on Render's temporary disk, so they are lost when the app sleeps, restarts or is redeployed.
 - Tested on 18 Nov from a laptop and an iPhone. The same tomato photo as in the Colab test gave
@@ -122,4 +124,3 @@ Live at https://plant-disease-classifier-7w10.onrender.com (Render free web serv
   `main` on demo day cannot change the demo.
 - Batch tab: rotate phone photos with `ImageOps.exif_transpose`, as the single-image tab already does
   (separate PR).
-- Example images on Render and Colab: upload them to the Hugging Face repo and download them at start-up.
