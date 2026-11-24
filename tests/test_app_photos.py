@@ -13,17 +13,36 @@ def load_app():
     return app
 
 
-def test_phone_photo_is_turned_the_right_way_up(tmp_path):
+def make_photo(path, orientation=None):
+    """A 40x20 photo with a red block in the top-left corner, saved the way a phone does."""
+    photo = Image.new("RGB", (40, 20))
+    photo.paste((255, 0, 0), (0, 0, 8, 8))
+    if orientation is None:
+        photo.save(path)
+    else:
+        exif = Image.Exif()
+        exif[0x0112] = orientation  # EXIF tag that tells viewers how to turn the photo
+        photo.save(path, exif=exif)
+
+
+@pytest.mark.parametrize("orientation, size, red_at", [
+    (3, (40, 20), (37, 17)),  # upside down: the red block ends up bottom-right
+    (6, (20, 40), (17, 2)),   # turned 90 degrees: the red block ends up top-right
+    (8, (20, 40), (2, 37)),   # turned 270 degrees: the red block ends up bottom-left
+])
+def test_phone_photo_is_turned_the_right_way_up(tmp_path, orientation, size, red_at):
     app = load_app()
-    exif = Image.Exif()
-    exif[0x0112] = 6  # the phone says "rotate 90 degrees"
     path = tmp_path / "phone.jpg"
-    Image.new("RGB", (40, 20)).save(path, exif=exif)
-    assert app.open_photo(path).size == (20, 40)
+    make_photo(path, orientation)
+    photo = app.open_photo(path)
+    assert photo.size == size
+    assert photo.getpixel(red_at)[0] > 150
 
 
 def test_normal_photo_is_not_changed(tmp_path):
     app = load_app()
     path = tmp_path / "normal.jpg"
-    Image.new("RGB", (40, 20)).save(path)
-    assert app.open_photo(path).size == (40, 20)
+    make_photo(path)
+    photo = app.open_photo(path)
+    assert photo.size == (40, 20)
+    assert photo.getpixel((2, 2))[0] > 150
