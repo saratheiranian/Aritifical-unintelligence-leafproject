@@ -60,14 +60,27 @@ This is a student project, not a diagnostic tool.
 APP_DIR = Path(__file__).resolve().parent.parent / "app"
 
 
-def upload_examples(api, repo_id, app_dir=APP_DIR):
-    """Upload the gallery images (git-ignored), so the app can download them at start-up."""
+def example_folders(app_dir=None):
+    """Return the gallery folders, or stop if src.make_app_assets has not been run."""
+    app_dir = app_dir or APP_DIR
     folders = [app_dir / "examples", app_dir / "class_examples"]
-    missing = [str(f) for f in folders if not f.is_dir()]
+    missing = [str(f) for f in folders if not f.is_dir() or not any(f.rglob("*.jpg"))]
     if missing:
-        raise SystemExit(f"Not found: {', '.join(missing)}. Run python -m src.make_app_assets first.")
+        raise SystemExit(f"No images in: {', '.join(missing)}. Run python -m src.make_app_assets first.")
+    return folders
+
+
+def upload_examples(api, repo_id, folders):
+    """Upload the gallery images (git-ignored), so the app can download them at start-up."""
     for folder in folders:
-        api.upload_folder(folder_path=str(folder), path_in_repo=folder.name, repo_id=repo_id)
+        api.upload_folder(
+            folder_path=str(folder),
+            path_in_repo=folder.name,
+            repo_id=repo_id,
+            allow_patterns="*.jpg",  # skip files such as .DS_Store
+            delete_patterns="*",  # remove old images in this folder only; the model and README stay
+            commit_message=f"Upload {folder.name} gallery images",
+        )
 
 
 def main(argv=None):
@@ -80,6 +93,8 @@ def main(argv=None):
     p.add_argument("--with-examples", action="store_true",
                    help="also upload app/examples and app/class_examples (made by src.make_app_assets)")
     args = p.parse_args(argv)
+    # check the images before anything is uploaded, so a missing folder cannot leave a half-updated repo
+    folders = example_folders() if args.with_examples else []
 
     from huggingface_hub import HfApi
 
@@ -107,8 +122,8 @@ def main(argv=None):
     api.create_repo(args.repo_id, repo_type="model", private=args.private, exist_ok=True)
     api.upload_file(path_or_fileobj=checkpoint, path_in_repo=filename, repo_id=args.repo_id)
     api.upload_file(path_or_fileobj=card.encode(), path_in_repo="README.md", repo_id=args.repo_id)
-    if args.with_examples:
-        upload_examples(api, args.repo_id)
+    if folders:
+        upload_examples(api, args.repo_id, folders)
     print(f"Uploaded {filename} to https://huggingface.co/{args.repo_id}")
 
 
