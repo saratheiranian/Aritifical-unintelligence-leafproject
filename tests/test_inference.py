@@ -51,3 +51,30 @@ def test_app_builds_with_captioned_examples(checkpoint, tmp_path):
     Image.new("RGB", (64, 64), (40, 120, 40)).save(examples / "Cherry_(including_sour)___healthy.jpg")
     app.EXAMPLES_DIR = examples
     assert app.build_app({"cnn": str(checkpoint)}) is not None
+
+def test_hf_repo_also_downloads_the_example_images(monkeypatch, tmp_path):
+    pytest.importorskip("gradio")
+    import importlib.util
+    import sys
+    import types
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location("app", Path(__file__).parent.parent / "app" / "app.py")
+    app = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(app)
+
+    calls = {}
+    fake_hub = types.ModuleType("huggingface_hub")
+    fake_hub.list_repo_files = lambda repo: ["README.md", "resnet18.pt", "examples/Apple___healthy.jpg"]
+    fake_hub.hf_hub_download = lambda repo, filename: f"/cache/{filename}"
+    fake_hub.snapshot_download = lambda repo, **kwargs: calls.update(repo=repo, **kwargs)
+    monkeypatch.setitem(sys.modules, "huggingface_hub", fake_hub)
+    monkeypatch.setenv("HF_MODEL_REPO", "user/plant-model")
+    monkeypatch.setattr(app, "HERE", tmp_path)  # no local models/ folder
+
+    assert app.find_checkpoints(None) == {"resnet18": "/cache/resnet18.pt"}
+    assert calls == {
+        "repo": "user/plant-model",
+        "allow_patterns": ["examples/*", "class_examples/*"],
+        "local_dir": tmp_path,
+    }
