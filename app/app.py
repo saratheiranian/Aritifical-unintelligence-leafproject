@@ -24,7 +24,7 @@ from pathlib import Path
 
 import gradio as gr
 import pandas as pd
-from PIL import Image
+from PIL import Image, ImageOps
 
 # Works both from the repo (app/app.py) and from a Space where src/ sits next to app.py.
 HERE = Path(__file__).resolve().parent
@@ -42,6 +42,11 @@ FLAG_DIR = HERE / "flagged"
 def supports_example_labels():
     """gr.Examples gained `example_labels` in Gradio 4.x; older versions just skip the captions."""
     return "example_labels" in inspect.signature(gr.Examples.__init__).parameters
+
+
+def open_photo(path):
+    """Open an uploaded photo the right way up (phones save the rotation in EXIF)."""
+    return ImageOps.exif_transpose(Image.open(path))
 
 
 def find_checkpoints(cli_paths):
@@ -120,7 +125,7 @@ def build_app(checkpoints):
         rows = []
         for f in files:
             path = f if isinstance(f, str) else f.name
-            top = get_predictor(model_name).top_k(Image.open(path), k=3)
+            top = get_predictor(model_name).top_k(open_photo(path), k=3)
             row = {"File": Path(path).name}
             for rank, (c, p) in enumerate(top, start=1):
                 row[f"#{rank}"] = pretty_name(c)
