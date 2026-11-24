@@ -23,19 +23,19 @@ Partners review each other's pull requests: 1 and 2, 3 and 4, 5 and 6.
 
 - Repository: https://github.com/saratheiranian/Aritifical-unintelligence-leafproject
 - Deployed app (Render): https://plant-disease-classifier-7w10.onrender.com
-- Final model (W&B run ID): `1bee769f0c32413e8b0ad57fdcc7d626` (output model `best_model.pt`, 99.0% test accuracy). Results log: [docs/results.md](docs/results.md)
+- Final model (ClearML task ID): `1bee769f0c32413e8b0ad57fdcc7d626` (output model `best_model.pt`, 99.0% test accuracy). Results log: [docs/results.md](docs/results.md)
 
 ## Status and results
 
 | Stage | Status |
 | --- | --- |
-| Data split, EDA and quality checks | Done: 38,812 train / 8,317 val / 8,318 test, stratified, seed 42; W&B Dataset `7d1a35d50f2d4fab994f3761743d0c57`; see [docs/data_card.md](docs/data_card.md) |
+| Data split, EDA and quality checks | Done: 38,812 train / 8,317 val / 8,318 test, stratified, seed 42; ClearML Dataset `7d1a35d50f2d4fab994f3761743d0c57`; see [docs/data_card.md](docs/data_card.md) |
 | Balanced sampler | Done: no accuracy gain on the 25% subset (88.9% vs 89.4% baseline) |
 | CNN from scratch, full data | Done: **99.0% test accuracy**, 99.99% top-5, macro F1 0.986 (20 epochs, 64 min on a MacBook GPU) |
 | Robustness tests | Done: on 7 distortions the 99% model keeps 73.2% on average; noise is the main weakness; strong augmentation keeps the largest share of its clean accuracy (77%, against 74% for the 99% model and 59% without augmentation) (see [docs/results.md](docs/results.md)) |
 | Grad-CAM | Done: on all 8,318 test images, 71% of the 83 mistakes are between diseases of the same plant; the 99% model puts 64% of its heatmap on the leaf, more than the same model with random weights (51% on average); it only partly passes the sanity check, so the heatmaps are a rough guide (see [docs/results.md](docs/results.md)) |
 | Gradio app (local) | Done |
-| Hyperparameter sweep | To do (waiting for the W&B GPU queue) |
+| Hyperparameter sweep | To do (waiting for the ClearML GPU queue) |
 | ResNet18 baseline | To do |
 | Deployment | Done: Render (permanent link) and a Colab notebook for demo day |
 | Report, demo video, AI use statement | To do (deadline 3 Dec 2026, 4pm) |
@@ -55,7 +55,7 @@ per-epoch numbers are in [docs/results.md](docs/results.md).
 | `src/robustness.py` | Accuracy on distorted test images (blur, noise, lighting, rotation, JPEG, zoom) |
 | `src/distortions.py` | The 7 image distortions used by the robustness test |
 | `src/gradcam.py` | Grad-CAM heatmaps: which parts of a leaf photo each model used for its prediction |
-| `src/split_data.py`, `src/eda.py`, `src/data_quality.py`, `src/register_dataset.py` | Split check, EDA plots, image quality and duplicate checks, W&B dataset versioning |
+| `src/split_data.py`, `src/eda.py`, `src/data_quality.py`, `src/register_dataset.py` | Split check, EDA plots, image quality and duplicate checks, ClearML dataset versioning |
 | `src/sweep.py`, `src/compare_runs.py` | Hyperparameter experiments and the results table |
 | `src/inference.py`, `app/app.py` | Prediction helper and the Gradio app |
 | `src/make_app_assets.py`, `src/publish_model.py`, `src/deploy_space.py` | App images, Hugging Face model upload and Space deployment |
@@ -70,30 +70,27 @@ Python 3.10 or 3.11.
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-wandb login                        # paste credentials from the W&B server (Settings > Workspace)
+wandb login                        # paste your API key from your W&B account
 ```
 
 Activate the environment again in every new terminal (`source .venv/bin/activate`); a
-"No module named torch" error usually means it is not active. While the KCL W&B server
-is down, credentials from a free [app.wandb.ai](https://app.wandb.ai) account work the same way.
-Training picks the best device automatically: an NVIDIA GPU on the W&B worker, the Apple
-GPU (MPS) on a Mac, otherwise the CPU.
+"No module named torch" error usually means it is not active.
+Training picks the best device automatically: an NVIDIA GPU on the ClearML worker, the Apple GPU (MPS) on a Mac, otherwise the CPU.
 
-Never commit `wandb.conf`, the dataset or model files (they are in `.gitignore`).
+Never commit API keys, the dataset or model files (the dataset and model files are in `.gitignore`). `wandb login` keeps your W&B API key outside the repo.
 
 ## Usage
 
 All commands run from the repo root. Training, evaluation, robustness and Grad-CAM log to the
 team's Weights & Biases project (`src/config.py`); add `--no-wandb` to run them without tracking.
-`eda` and `data_quality` log to W&B too (add `--no-wandb` to skip it). Only `register_dataset`
-still uses W&B, because the report cites the W&B Dataset ID it created.
+`eda` and `data_quality` log to W&B too (add `--no-wandb` to skip it). Only `register_dataset` still uses ClearML, because the report cites the ClearML Dataset ID it created.
 
 ### 1. Data
 
 ```bash
 python -m src.split_data                   # class counts per split, stratification check
 python -m src.eda                          # plots to outputs/eda/ and W&B
-python -m src.register_dataset             # version the split (row indices) as a W&B Dataset
+python -m src.register_dataset             # version the split (row indices) as a ClearML Dataset
 python -m src.data_quality                 # image sizes, brightness, duplicates and split leakage
 python -m src.augment_preview              # figure of the none/basic/strong augmentation levels
 ```
@@ -118,9 +115,7 @@ Architectures (`--arch`): `cnn` is a plain CNN (conv, batch norm, ReLU, max pool
 the pretrained ImageNet ResNet18 with a new final layer. `--depth`, `--base-channels`,
 `--dropout` and `--no-batchnorm` apply to both from-scratch models.
 
-Remote runs: the W&B agent clones the repository at your last pushed commit, so commit and
-push first. The queue name is on the Workers & Queues page of the W&B server. The GPU
-slice has 8 GB, which is plenty for batch size 64 at 128x128 or 32 at 256x256.
+Remote runs: the ClearML agent clones the repository at your last pushed commit, so commit and push first. The queue name is on the Workers & Queues page of the ClearML server. The GPU slice has 8 GB, which is plenty for batch size 64 at 128x128 or 32 at 256x256.
 
 ### 3. Experiments
 
@@ -131,7 +126,7 @@ python -m src.compare_runs --tag sweep     # outputs/results.md: table for the r
 
 `src/sweep.py` lists the one-change-at-a-time variants (learning rate, optimiser, batch size,
 dropout, batchnorm, augmentation, depth, channels, scheduler, image size, ResNet18).
-Compare them in the W&B web app too: select the tasks, then Compare.
+Compare them in the ClearML web app too: select the tasks, then Compare.
 
 ### 4. Evaluate
 
