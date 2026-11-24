@@ -116,7 +116,7 @@ NUM_CLASSES = 39
 
 
 
-def get_resnet18_baseline(device, lr=0.001, momentum=0.9, step_size=7, gamma=0.1):
+def resnet18_finetune(device, lr=0.001, momentum=0.9, step_size=7, gamma=0.1):
 
   weights = models.ResNet18_Weights.IMAGENET1K_V1
   model_ft = models.resnet18(weights=weights)
@@ -135,13 +135,13 @@ def get_resnet18_baseline(device, lr=0.001, momentum=0.9, step_size=7, gamma=0.1
 if __name__ == "__main__":
   device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-  model, criterion, optimizer, scheduler = get_resnet18_baseline(device)
+  model, criterion, optimizer, scheduler = resnet18_finetune(device)
   print(f"ResNet18 baseline successfully initialized for {NUM_CLASSES} classes.")
 
 if __name__ == "__main__":
   device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-  model, criterion, optimizer, scheduler = get_resnet18_baseline(device)
+  model, criterion, optimizer, scheduler = resnet18_finetune(device)
   print(f"ResNet18 baseline successfully initialized for {NUM_CLASSES} classes.")
 
 
@@ -152,7 +152,7 @@ def build_model(arch, **kwargs):
     if arch == "rescnn":
         return ResidualCNN(**kwargs)
     if arch == "resnet18":
-        return get_resnet18_baseline(
+        return resnet18_finetune(
             num_classes=kwargs.get("num_classes", NUM_CLASSES),
             pretrained=kwargs.get("pretrained", True),
             freeze_backbone=kwargs.get("freeze_backbone", False),
