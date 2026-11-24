@@ -1,10 +1,9 @@
 """Model architectures: two CNNs written from scratch (plain and residual), plus a ResNet18 baseline."""
 
 import torch
-from torch import nn
-from torchvision import models
-import torch.optim as optim
+from torch import nn, optim
 from torch.optim import lr_scheduler
+from torchvision import models
 
 NUM_CLASSES = 39
 

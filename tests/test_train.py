@@ -123,13 +123,15 @@ def test_main_trains_resnet18_with_frozen_backbone(
   from torchvision import models as tv_models
 
   def fake_resnet18_finetune(
-      device=torch.device("cpu"),
+      device=None,
       lr=0.001,
       momentum=0.9,
       step_size=7,
       gamma=0.1,
       **kwargs,
   ):
+    if device is None:
+      device = torch.device("cpu")
     num_classes = kwargs.get("num_classes", NUM_CLASSES)
     m = tv_models.resnet18(weights=None)
     m.fc = nn.Linear(m.fc.in_features, num_classes)
@@ -155,7 +157,6 @@ def test_main_trains_resnet18_with_frozen_backbone(
   assert ckpt["arch"] == "resnet18"
   assert ckpt["model_kwargs"]["pretrained"] is False
   assert ckpt["model_kwargs"]["freeze_backbone"] is True
-
 
 def test_main_logs_every_epoch_to_wandb(fast_train, monkeypatch):
     fake_wandb = MagicMock()
