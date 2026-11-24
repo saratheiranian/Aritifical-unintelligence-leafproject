@@ -5,7 +5,8 @@
 
     python -m src.make_app_assets --n-examples 12 --per-class 3
 
-These folders are git-ignored (no dataset files in the repo); deploy_space.py uploads them.
+These folders are git-ignored (no dataset files in the repo); upload them with
+`python -m src.publish_model ... --with-examples`, and the app downloads them at start-up.
 """
 
 import argparse
