@@ -161,12 +161,16 @@ python -m src.make_app_assets                                    # example galle
 python app/app.py --checkpoint outputs/best_model.pt             # local app at http://127.0.0.1:7860
 hf auth login                                           # token with write access
 python -m src.publish_model --repo-id <hf-user>/plant-disease-cnn --checkpoint outputs/best_model.pt
+python -m src.publish_model --repo-id <hf-user>/plant-disease-cnn --checkpoint outputs/resnet18.pt --with-examples   # also uploads the gallery images
 ```
 
 The app is deployed on Render (https://plant-disease-classifier-7w10.onrender.com) and can be started
 in Colab for demo day with `notebooks/colab_demo.ipynb`; both download the model from the Hugging Face
 Hub. Settings and test results are in [docs/deployment.md](docs/deployment.md). (`src/deploy_space.py`
 deploys to a Hugging Face Space instead, which now needs a paid plan for Gradio.)
+
+The gallery images (`app/examples/`, `app/class_examples/`) are not in Git, so `--with-examples` uploads them
+to the same Hugging Face repo, and the app downloads them at start-up.
 
 App features: top-5 predictions as bars and a table, an example gallery captioned with each
 image's true class, a model selector (when several checkpoints are given), a low-confidence
