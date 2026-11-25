@@ -112,6 +112,8 @@ Live at https://plant-disease-classifier-7w10.onrender.com (Render free web serv
   `GRADIO_SERVER_NAME=0.0.0.0`, `GRADIO_SERVER_PORT=10000`.
 - Example images: `app/examples/` and `app/class_examples/` are git-ignored, so they are also in the
   Hugging Face repo, and the app downloads them at start-up when `HF_MODEL_REPO` is set.
+  To upload them again after `python -m src.make_app_assets`, run
+  `python -m src.publish_model --repo-id Media1234/plant-disease-cnn --checkpoint outputs/resnet18.pt --with-examples`.
 - Free plan: 0.1 CPU and 512 MB RAM, which is enough for the CNN. It sleeps after 15 minutes without
   visitors, so the first visit after that takes 1 to 2 minutes. Flagged predictions are saved on Render's temporary disk, so they are lost when the app sleeps, restarts or is redeployed.
 - Tested on 18 Nov from a laptop and an iPhone. The same tomato photo as in the Colab test gave
