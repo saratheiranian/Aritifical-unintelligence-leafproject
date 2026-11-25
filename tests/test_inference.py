@@ -105,3 +105,43 @@ def test_app_still_starts_if_the_example_download_fails(monkeypatch, tmp_path, c
 
     assert app.find_checkpoints(None) == {"resnet18": "/cache/resnet18.pt"}
     assert "could not download the example images" in capsys.readouterr().out
+
+
+def load_app_with_fake_hub(monkeypatch, tmp_path, list_repo_files):
+    pytest.importorskip("gradio")
+    import importlib.util
+    import sys
+    import types
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location("app", Path(__file__).parent.parent / "app" / "app.py")
+    app = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(app)
+
+    downloads = []
+    fake_hub = types.ModuleType("huggingface_hub")
+    fake_hub.list_repo_files = list_repo_files
+    fake_hub.hf_hub_download = lambda repo, filename: f"/cache/{filename}"
+    fake_hub.snapshot_download = lambda repo, **kwargs: downloads.append(repo)
+    monkeypatch.setitem(sys.modules, "huggingface_hub", fake_hub)
+    monkeypatch.setenv("HF_MODEL_REPO", "user/plant-model-typo")
+    monkeypatch.setattr(app, "HERE", tmp_path)
+    return app, downloads
+
+
+def test_wrong_repo_name_gives_one_clear_message(monkeypatch, tmp_path, capsys):
+    def repo_not_found(repo):
+        raise OSError("404 Repository Not Found")
+
+    app, downloads = load_app_with_fake_hub(monkeypatch, tmp_path, repo_not_found)
+    with pytest.raises(SystemExit, match="Could not read the Hugging Face repo 'user/plant-model-typo'"):
+        app.find_checkpoints(None)
+    assert downloads == []  # the pictures are not tried, so there is no misleading gallery warning
+    assert "galleries" not in capsys.readouterr().out
+
+
+def test_repo_without_models_gives_a_clear_message(monkeypatch, tmp_path):
+    app, downloads = load_app_with_fake_hub(monkeypatch, tmp_path, lambda repo: ["README.md", "examples/a.jpg"])
+    with pytest.raises(SystemExit, match="has no .pt model files"):
+        app.find_checkpoints(None)
+    assert downloads == []
