@@ -14,7 +14,6 @@ Where models come from (first match wins):
 
 import argparse
 import csv
-import inspect
 import os
 import sys
 import uuid
@@ -37,11 +36,6 @@ LOW_CONFIDENCE = 0.5
 EXAMPLES_DIR = HERE / "examples"
 CLASS_EXAMPLES_DIR = HERE / "class_examples"
 FLAG_DIR = HERE / "flagged"
-
-
-def supports_example_labels():
-    """gr.Examples gained `example_labels` in Gradio 4.x; older versions just skip the captions."""
-    return "example_labels" in inspect.signature(gr.Examples.__init__).parameters
 
 
 def open_photo(path):
@@ -95,6 +89,12 @@ def build_app(checkpoints):
     def class_gallery(class_name):
         folder = CLASS_EXAMPLES_DIR / class_name
         return sorted(str(p) for p in folder.glob("*.jpg")) if folder.is_dir() else []
+
+    examples = sorted(str(p) for p in EXAMPLES_DIR.glob("*.jpg"))
+
+    def pick_example(evt: gr.SelectData):
+        """Put the clicked example picture in the photo box."""
+        return open_photo(examples[evt.index])
 
     def classify(image, model_name):
         if image is None:
@@ -166,13 +166,15 @@ def build_app(checkpoints):
                 with gr.Column():
                     image = gr.Image(type="pil", label="Leaf photo", height=320)
                     button = gr.Button("Classify", variant="primary")
-                    examples = sorted(str(p) for p in EXAMPLES_DIR.glob("*.jpg"))
                     if examples:
-                        # Example files are named after their true class; show it as the caption.
-                        captions = [pretty_name(Path(p).stem) for p in examples]
-                        extra = {"example_labels": captions} if supports_example_labels() else {}
-                        gr.Examples(examples=examples, inputs=image,
-                                    label="Or pick an example (caption = true class)", **extra)
+                        # Example files are named after their true class; show it under each picture.
+                        # A gallery, because gr.Examples shows either the pictures or the captions, not both.
+                        example_gallery = gr.Gallery(
+                            [(p, pretty_name(Path(p).stem)) for p in examples],
+                            label="Or pick an example (caption = true class)",
+                            columns=4, allow_preview=False,
+                        )
+                        example_gallery.select(pick_example, None, image)
                 with gr.Column():
                     note = gr.Markdown()
                     label = gr.Label(num_top_classes=TOP_K, label=f"Top {TOP_K} predictions")
