@@ -2,6 +2,7 @@ import sys
 import types
 
 import pytest
+import torch
 
 from src import publish_model
 from src.publish_model import example_folders, upload_examples
@@ -61,3 +62,27 @@ def test_main_checks_the_images_before_uploading_anything(monkeypatch, tmp_path)
     with pytest.raises(SystemExit, match="make_app_assets"):
         publish_model.main(["--repo-id", "user/plant-model", "--checkpoint", "missing.pt", "--with-examples"])
     assert created == []  # stopped before the model or README were uploaded
+
+
+def test_main_without_the_flag_does_not_need_the_images(monkeypatch, tmp_path):
+    calls = []
+
+    class FakeHfApi:
+        def create_repo(self, *args, **kwargs):
+            calls.append("create_repo")
+
+        def upload_file(self, path_or_fileobj, path_in_repo, repo_id):
+            calls.append(path_in_repo)
+
+        def upload_folder(self, **kwargs):
+            calls.append(kwargs["path_in_repo"])
+
+    fake_hub = types.ModuleType("huggingface_hub")
+    fake_hub.HfApi = FakeHfApi
+    monkeypatch.setitem(sys.modules, "huggingface_hub", fake_hub)
+    monkeypatch.setattr(publish_model, "APP_DIR", tmp_path)  # no images here
+    checkpoint = tmp_path / "model.pt"
+    torch.save({"arch": "cnn", "val_acc": 0.99, "model_kwargs": {}, "img_size": 128,
+                "class_names": ["Apple___healthy"]}, checkpoint)
+    publish_model.main(["--repo-id", "user/plant-model", "--checkpoint", str(checkpoint)])
+    assert calls == ["create_repo", "cnn.pt", "README.md"]  # model and card only, no image folders
