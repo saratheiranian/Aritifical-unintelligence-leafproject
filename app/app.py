@@ -59,8 +59,8 @@ def find_checkpoints(cli_paths):
             files = [f for f in list_repo_files(repo) if f.endswith(".pt")]
         except Exception as e:  # any error here means the repo cannot be read
             raise SystemExit(
-                f"Could not read the Hugging Face repo {repo!r} ({type(e).__name__}): "
-                "check the name, that the repo is public, and the internet connection"
+                f"Could not read the Hugging Face repo {repo!r} ({type(e).__name__}: {e}). "
+                "Check the name, that the repo is public (or HF_TOKEN is set), and the internet connection."
             ) from e
         if not files:
             raise SystemExit(f"The Hugging Face repo {repo!r} has no .pt model files")
