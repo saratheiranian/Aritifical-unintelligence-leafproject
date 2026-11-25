@@ -54,12 +54,21 @@ def find_checkpoints(cli_paths):
     if repo:
         from huggingface_hub import hf_hub_download, list_repo_files, snapshot_download
 
+        # check the repo first, so a wrong name or no internet gives one clear message
+        try:
+            files = [f for f in list_repo_files(repo) if f.endswith(".pt")]
+        except Exception as e:  # any error here means the repo cannot be read
+            raise SystemExit(
+                f"Could not read the Hugging Face repo {repo!r} ({type(e).__name__}): "
+                "check the name, that the repo is public, and the internet connection"
+            ) from e
+        if not files:
+            raise SystemExit(f"The Hugging Face repo {repo!r} has no .pt model files")
         # the example images are git-ignored, so they are kept in the model repo as well
         try:
             snapshot_download(repo, allow_patterns=["examples/*", "class_examples/*"], local_dir=HERE)
         except Exception as e:  # noqa: BLE001 - the galleries are optional, so the app still starts without them
             print(f"Warning: could not download the example images ({e}), so the galleries will be empty")
-        files = [f for f in list_repo_files(repo) if f.endswith(".pt")]
         return {Path(f).stem: hf_hub_download(repo, f) for f in files}
     raise SystemExit("No model found: pass --checkpoint, add .pt files to models/, or set HF_MODEL_REPO")
 
