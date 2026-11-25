@@ -63,7 +63,7 @@ def find_checkpoints(cli_paths):
         # check the repo first, so a wrong name or no internet gives one clear message
         try:
             files = [f for f in list_repo_files(repo) if f.endswith(".pt")]
-        except Exception as e:  # noqa: BLE001 - any error here means the repo cannot be read
+                except Exception as e:  # any error here means the repo cannot be read
             raise SystemExit(
                 f"Could not read the Hugging Face repo {repo!r} ({type(e).__name__}): "
                 "check the name, that the repo is public, and the internet connection"
