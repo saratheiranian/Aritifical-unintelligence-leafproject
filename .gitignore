@@ -37,4 +37,5 @@ app/examples/
 app/class_examples/
 app/models/
 app/flagged/
+app/.cache/
 wandb/

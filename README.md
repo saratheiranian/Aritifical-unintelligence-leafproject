@@ -2,7 +2,7 @@
 
 KCL 5CCSAGAP small group project: classify plant diseases from leaf photos (39 classes,
 [PlantVillage](https://huggingface.co/datasets/DScomp380/plant_village)) with a CNN built from
-scratch in PyTorch, tracked in ClearML, served with Gradio on Render.
+scratch in PyTorch, tracked in W&B, served with Gradio on Render.
 
 ## Team
 
@@ -12,7 +12,7 @@ Team number: 7
 | --- | --- | --- |
 | 1. Data lead | Sara | Data loading, split, EDA, data quality checks, balanced sampler, data card |
 | 2. Model lead | Precious | CNN architectures, training loop, ResNet18 baseline |
-| 3. Experiments lead | Amrit | ClearML tracking, hyperparameter sweep and search, results table |
+| 3. Experiments lead | Amrit | W&B tracking, hyperparameter sweep and search, results table |
 | 4. Evaluation lead | Maryam and Media | Test metrics, robustness tests, Grad-CAM, Responsible AI |
 | 5. App and deployment lead | Maryam and Media | Gradio app, deployment (Render, Colab), demo video |
 | 6. Project manager and quality lead | Nischal | Planning, Issues, minutes, CI and tests, report assembly, submission |
@@ -35,7 +35,7 @@ Partners review each other's pull requests: 1 and 2, 3 and 4, 5 and 6.
 | Robustness tests | Done: on 7 distortions the 99% model keeps 73.2% on average; noise is the main weakness; strong augmentation keeps the largest share of its clean accuracy (77%, against 74% for the 99% model and 59% without augmentation) (see [docs/results.md](docs/results.md)) |
 | Grad-CAM | Done: on all 8,318 test images, 71% of the 83 mistakes are between diseases of the same plant; the 99% model puts 64% of its heatmap on the leaf, more than the same model with random weights (51% on average); it only partly passes the sanity check, so the heatmaps are a rough guide (see [docs/results.md](docs/results.md)) |
 | Gradio app (local) | Done |
-| Hyperparameter sweep | To do (waiting for the KCL ClearML GPU queue) |
+| Hyperparameter sweep | To do (waiting for the ClearML GPU queue) |
 | ResNet18 baseline | To do |
 | Deployment | Done: Render (permanent link) and a Colab notebook for demo day |
 | Report, demo video, AI use statement | To do (deadline 3 Dec 2026, 4pm) |
@@ -70,29 +70,26 @@ Python 3.10 or 3.11.
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-clearml-init                       # paste credentials from the KCL ClearML server (Settings > Workspace)
+wandb login                        # paste your API key from your W&B account
 ```
 
 Activate the environment again in every new terminal (`source .venv/bin/activate`); a
-"No module named torch" error usually means it is not active. While the KCL ClearML server
-is down, credentials from a free [app.clear.ml](https://app.clear.ml) account work the same way.
-Training picks the best device automatically: an NVIDIA GPU on the ClearML worker, the Apple
-GPU (MPS) on a Mac, otherwise the CPU.
+"No module named torch" error usually means it is not active.
+Training picks the best device automatically: an NVIDIA GPU on the ClearML worker, the Apple GPU (MPS) on a Mac, otherwise the CPU.
 
-Never commit `clearml.conf`, the dataset or model files (they are in `.gitignore`).
+Never commit API keys, the dataset or model files (the dataset and model files are in `.gitignore`). `wandb login` keeps your W&B API key outside the repo.
 
 ## Usage
 
 All commands run from the repo root. Training, evaluation, robustness and Grad-CAM log to the
 team's Weights & Biases project (`src/config.py`); add `--no-wandb` to run them without tracking.
-`eda` and `data_quality` log to W&B too (add `--no-wandb` to skip it). Only `register_dataset`
-still uses ClearML, because the report cites the ClearML Dataset ID it created.
+`eda` and `data_quality` log to W&B too (add `--no-wandb` to skip it). Only `register_dataset` still uses ClearML, because the report cites the ClearML Dataset ID it created.
 
 ### 1. Data
 
 ```bash
 python -m src.split_data                   # class counts per split, stratification check
-python -m src.eda                          # plots to outputs/eda/ and ClearML
+python -m src.eda                          # plots to outputs/eda/ and W&B
 python -m src.register_dataset             # version the split (row indices) as a ClearML Dataset
 python -m src.data_quality                 # image sizes, brightness, duplicates and split leakage
 python -m src.augment_preview              # figure of the none/basic/strong augmentation levels
@@ -118,9 +115,7 @@ Architectures (`--arch`): `cnn` is a plain CNN (conv, batch norm, ReLU, max pool
 the pretrained ImageNet ResNet18 with a new final layer. `--depth`, `--base-channels`,
 `--dropout` and `--no-batchnorm` apply to both from-scratch models.
 
-Remote runs: the ClearML agent clones the repository at your last pushed commit, so commit and
-push first. The queue name is on the Workers & Queues page of the KCL ClearML server. The GPU
-slice has 8 GB, which is plenty for batch size 64 at 128x128 or 32 at 256x256.
+Remote runs: the ClearML agent clones the repository at your last pushed commit, so commit and push first. The queue name is on the Workers & Queues page of the ClearML server. The GPU slice has 8 GB, which is plenty for batch size 64 at 128x128 or 32 at 256x256.
 
 ### 3. Experiments
 
@@ -185,7 +180,7 @@ batch upload, and an About tab on limitations.
 pytest --cov=src
 ```
 
-Coverage target: 80% (omits: make_app_assets.py, publish_model.py, sweep.py, compare_runs.py, register_dataset.py, eda.py, split_data.py).
+Coverage target: 80% (omits: make_app_assets.py, publish_model.py, sweep.py, compare_runs.py, register_dataset.py, split_data.py).
 
 GitHub Actions runs the same tests on every push and pull request; keep them green before merging.
 

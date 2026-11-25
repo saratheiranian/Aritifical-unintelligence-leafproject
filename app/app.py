@@ -14,7 +14,6 @@ Where models come from (first match wins):
 
 import argparse
 import csv
-import inspect
 import os
 import sys
 import uuid
@@ -24,7 +23,7 @@ from pathlib import Path
 
 import gradio as gr
 import pandas as pd
-from PIL import Image
+from PIL import Image, ImageOps
 
 # Works both from the repo (app/app.py) and from a Space where src/ sits next to app.py.
 HERE = Path(__file__).resolve().parent
@@ -39,9 +38,9 @@ CLASS_EXAMPLES_DIR = HERE / "class_examples"
 FLAG_DIR = HERE / "flagged"
 
 
-def supports_example_labels():
-    """gr.Examples gained `example_labels` in Gradio 4.x; older versions just skip the captions."""
-    return "example_labels" in inspect.signature(gr.Examples.__init__).parameters
+def open_photo(path):
+    """Open an uploaded photo the right way up (phones save the rotation in EXIF)."""
+    return ImageOps.exif_transpose(Image.open(path))
 
 
 def find_checkpoints(cli_paths):
@@ -53,8 +52,13 @@ def find_checkpoints(cli_paths):
         return {p.stem: str(p) for p in local}
     repo = os.environ.get("HF_MODEL_REPO")
     if repo:
-        from huggingface_hub import hf_hub_download, list_repo_files
+        from huggingface_hub import hf_hub_download, list_repo_files, snapshot_download
 
+        # the example images are git-ignored, so they are kept in the model repo as well
+        try:
+            snapshot_download(repo, allow_patterns=["examples/*", "class_examples/*"], local_dir=HERE)
+        except Exception as e:  # noqa: BLE001 - the galleries are optional, so the app still starts without them
+            print(f"Warning: could not download the example images ({e}), so the galleries will be empty")
         files = [f for f in list_repo_files(repo) if f.endswith(".pt")]
         return {Path(f).stem: hf_hub_download(repo, f) for f in files}
     raise SystemExit("No model found: pass --checkpoint, add .pt files to models/, or set HF_MODEL_REPO")
@@ -76,6 +80,12 @@ def build_app(checkpoints):
     def class_gallery(class_name):
         folder = CLASS_EXAMPLES_DIR / class_name
         return sorted(str(p) for p in folder.glob("*.jpg")) if folder.is_dir() else []
+
+    examples = sorted(str(p) for p in EXAMPLES_DIR.glob("*.jpg"))
+
+    def pick_example(evt: gr.SelectData):
+        """Put the clicked example picture in the photo box."""
+        return open_photo(examples[evt.index])
 
     def classify(image, model_name):
         if image is None:
@@ -120,7 +130,7 @@ def build_app(checkpoints):
         rows = []
         for f in files:
             path = f if isinstance(f, str) else f.name
-            top = get_predictor(model_name).top_k(Image.open(path), k=3)
+            top = get_predictor(model_name).top_k(open_photo(path), k=3)
             row = {"File": Path(path).name}
             for rank, (c, p) in enumerate(top, start=1):
                 row[f"#{rank}"] = pretty_name(c)
@@ -147,13 +157,15 @@ def build_app(checkpoints):
                 with gr.Column():
                     image = gr.Image(type="pil", label="Leaf photo", height=320)
                     button = gr.Button("Classify", variant="primary")
-                    examples = sorted(str(p) for p in EXAMPLES_DIR.glob("*.jpg"))
                     if examples:
-                        # Example files are named after their true class; show it as the caption.
-                        captions = [pretty_name(Path(p).stem) for p in examples]
-                        extra = {"example_labels": captions} if supports_example_labels() else {}
-                        gr.Examples(examples=examples, inputs=image,
-                                    label="Or pick an example (caption = true class)", **extra)
+                        # Example files are named after their true class; show it under each picture.
+                        # A gallery, because gr.Examples shows either the pictures or the captions, not both.
+                        example_gallery = gr.Gallery(
+                            [(p, pretty_name(Path(p).stem)) for p in examples],
+                            label="Or pick an example (caption = true class)",
+                            columns=4, allow_preview=False,
+                        )
+                        example_gallery.select(pick_example, None, image)
                 with gr.Column():
                     note = gr.Markdown()
                     label = gr.Label(num_top_classes=TOP_K, label=f"Top {TOP_K} predictions")
