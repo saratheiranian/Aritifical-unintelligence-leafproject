@@ -199,15 +199,14 @@ def build_app(checkpoints):
 
         with gr.Tab("About"):
             gr.Markdown(
-                "**How it works.** A ResNet18 network in PyTorch, pretrained on ImageNet photos and then trained "
+                "**How it works.** A ResNet18 network in PyTorch, pretrained on ImageNet photos and then fine-tuned "
                 "on the PlantVillage dataset (55,447 images, 39 classes, stratified 70/15/15 split). "
                 "Images are resized to 128x128 and normalised exactly as in training.\n\n"
                 "**Limitations.** Training photos show single leaves on plain backgrounds. Photos taken "
                 "outdoors, with several leaves or other plants, are much less reliable (the final model got "
                 "16.9% right on 236 real field photos from PlantDoc, against 99.1% test accuracy on lab "
-                "photos), and plants or "
-                "diseases outside the list are always mapped to one of the known classes. Use the "
-                "low-confidence warning and the example images to judge a prediction, and ask an expert "
+                "photos), and plants or diseases outside the list are always mapped to one of the known classes. "
+                "Use the low-confidence warning and the example images to judge a prediction, and ask an expert "
                 "before acting on it.\n\n"
                 "**Privacy.** Uploaded images are not stored unless you flag a prediction.\n\n"
                 "**Classes:** " + ", ".join(pretty_name(c) for c in class_names)
