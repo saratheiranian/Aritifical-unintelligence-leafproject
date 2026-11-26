@@ -36,6 +36,9 @@ Files that would be uploaded to the Space:
 
 - The app now runs ResNet18, the better of Amrit's two final candidates (validation accuracy 99.25% at
   epoch 12, 128x128 input, 39 classes). Sara's field test (#53) found it best on field photos too.
+- Test accuracy (Amrit, `src.evaluate`): 99.13%, top-5 100%, macro F1 0.989. It was trained from ImageNet
+  weights; the checkpoint stores `pretrained=False` on purpose, so the app loads the fine-tuned weights
+  instead of downloading the ImageNet ones again.
 - Uploaded with `python -m src.publish_model --repo-id Media1234/plant-disease-cnn --checkpoint outputs/resnet18.pt`,
   so the Hub now has `resnet18.pt`. The old `cnn.pt` was deleted from the Hub, so the app shows only this model.
 - CPU timing with the same laptop and command as in "CPU timing" below, using `outputs/resnet18.pt`:
