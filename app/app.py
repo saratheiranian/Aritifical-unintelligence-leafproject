@@ -204,7 +204,7 @@ def build_app(checkpoints):
                 "Images are resized to 128x128 and normalised exactly as in training.\n\n"
                 "**Limitations.** Training photos show single leaves on plain backgrounds. Photos taken "
                 "outdoors, with several leaves or other plants, are much less reliable (the final model got "
-                "16.9% right on 236 real field photos from PlantDoc, against 99.3% validation accuracy on lab "
+                "16.9% right on 236 real field photos from PlantDoc, against 99.1% test accuracy on lab "
                 "photos), and plants or "
                 "diseases outside the list are always mapped to one of the known classes. Use the "
                 "low-confidence warning and the example images to judge a prediction, and ask an expert "
