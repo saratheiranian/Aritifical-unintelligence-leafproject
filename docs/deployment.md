@@ -30,20 +30,25 @@ Files that would be uploaded to the Space:
 ## Model upload (task 6, 10 Nov)
 
 - `python -m src.publish_model --repo-id Media1234/plant-disease-cnn --checkpoint outputs/final_model.pt`
-- The model is on the Hugging Face Hub as `cnn.pt`: https://huggingface.co/Media1234/plant-disease-cnn
+- The model is on the Hugging Face Hub as `cnn.pt` (replaced by `resnet18.pt` on 22 Nov, see below):
+  https://huggingface.co/Media1234/plant-disease-cnn
 
 ## Final model: ResNet18 (22 Nov)
 
 - The app now runs ResNet18, the better of Amrit's two final candidates (validation accuracy 99.25% at
-  epoch 12, 128x128 input, 39 classes). Sara's field test (#53) found it best on field photos too.
+  epoch 12, 128x128 input, 39 classes). It was also the better of the two on field photos (see
+  [docs/results.md](results.md), 18 Nov).
 - Test accuracy (Amrit, `src.evaluate`): 99.13%, top-5 100%, macro F1 0.989. It was trained from ImageNet
   weights; the checkpoint stores `pretrained=False` on purpose, so the app loads the fine-tuned weights
   instead of downloading the ImageNet ones again.
-- Uploaded with `python -m src.publish_model --repo-id Media1234/plant-disease-cnn --checkpoint outputs/resnet18.pt`,
+- The checkpoint is Amrit's `outputs/final_resnet18/best_model.pt` (W&B run `rbccs1x4`, see results.md),
+  saved locally as `outputs/resnet18.pt` and uploaded with
+  `python -m src.publish_model --repo-id Media1234/plant-disease-cnn --checkpoint outputs/resnet18.pt`,
   so the Hub now has `resnet18.pt`. The old `cnn.pt` was deleted from the Hub, so the app shows only this model.
 - CPU timing with the same laptop and command as in "CPU timing" below, using `outputs/resnet18.pt`:
-  model load 0.25 s, first prediction 0.104 s, average of 20 predictions 0.013 s. Slower than the CNN,
-  but still far below the 2 s requirement.
+  model load 0.25 s, first prediction 0.104 s, average of 20 predictions 0.013 s. Loading and the average
+  prediction are slower than the CNN, the first prediction is slightly faster, and all are far below the
+  2 s requirement. Maryam's MacBook (Apple M4) gave 0.14 s, 0.027 s and 0.006 s.
 - Tested on the local app, on Render and on an iPhone: an Apple scab leaf gave Apple scab (100%), and an
   outdoor leaf gave Background without leaves (96%), the known field-photo limitation.
 
@@ -127,7 +132,7 @@ Live at https://plant-disease-classifier-7w10.onrender.com (Render free web serv
   `GRADIO_SERVER_NAME=0.0.0.0`, `GRADIO_SERVER_PORT=10000`.
 - Example images: `app/examples/` and `app/class_examples/` are git-ignored, so they are also in the
   Hugging Face repo, and the app downloads them at start-up when `HF_MODEL_REPO` is set.
-- Free plan: 0.1 CPU and 512 MB RAM, which is enough for the CNN. It sleeps after 15 minutes without
+- Free plan: 0.1 CPU and 512 MB RAM, which is enough for ResNet18. It sleeps after 15 minutes without
   visitors, so the first visit after that takes 1 to 2 minutes. Flagged predictions are saved on Render's temporary disk, so they are lost when the app sleeps, restarts or is redeployed.
 - Tested on 18 Nov from a laptop and an iPhone. The same tomato photo as in the Colab test gave
   Tomato: Early blight (80.2%), the same as on Colab. A Google photo of a tomato sprig with several
@@ -137,5 +142,3 @@ Live at https://plant-disease-classifier-7w10.onrender.com (Render free web serv
 
 - After the code freeze: tag the code (e.g. `demo-v1`) and clone that tag in the notebook, so a change to
   `main` on demo day cannot change the demo.
-- Batch tab: rotate phone photos with `ImageOps.exif_transpose`, as the single-image tab already does
-  (separate PR).
