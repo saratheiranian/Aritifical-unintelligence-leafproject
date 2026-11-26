@@ -199,7 +199,7 @@ def build_app(checkpoints):
 
         with gr.Tab("About"):
             gr.Markdown(
-                                "**How it works.** A ResNet18 network in PyTorch, pretrained on ImageNet photos and then trained "
+                "**How it works.** A ResNet18 network in PyTorch, pretrained on ImageNet photos and then trained "
                 "on the PlantVillage dataset (55,447 images, 39 classes, stratified 70/15/15 split). "
                 "Images are resized to 128x128 and normalised exactly as in training.\n\n"
                 "**Limitations.** Training photos show single leaves on plain backgrounds. Photos taken "
