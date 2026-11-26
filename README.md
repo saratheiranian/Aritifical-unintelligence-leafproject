@@ -23,7 +23,8 @@ Partners review each other's pull requests: 1 and 2, 3 and 4, 5 and 6.
 
 - Repository: https://github.com/saratheiranian/Aritifical-unintelligence-leafproject
 - Deployed app (Render): https://plant-disease-classifier-7w10.onrender.com
-- Final model (ClearML task ID): `1bee769f0c32413e8b0ad57fdcc7d626` (output model `best_model.pt`, 99.0% test accuracy). Results log: [docs/results.md](docs/results.md)
+- Final model (used by the app): ResNet18 pretrained on ImageNet and fine-tuned on PlantVillage, W&B run `rbccs1x4`, on the Hugging Face Hub as `resnet18.pt` in [Media1234/plant-disease-cnn](https://huggingface.co/Media1234/plant-disease-cnn) (99.13% test accuracy)
+- Best CNN from scratch (ClearML task ID): `1bee769f0c32413e8b0ad57fdcc7d626` (output model `best_model.pt`, 99.0% test accuracy). Results log: [docs/results.md](docs/results.md)
 
 ## Status and results
 
@@ -36,11 +37,11 @@ Partners review each other's pull requests: 1 and 2, 3 and 4, 5 and 6.
 | Grad-CAM | Done: on all 8,318 test images, 71% of the 83 mistakes are between diseases of the same plant; the 99% model puts 64% of its heatmap on the leaf, more than the same model with random weights (51% on average); it only partly passes the sanity check, so the heatmaps are a rough guide (see [docs/results.md](docs/results.md)) |
 | Gradio app (local) | Done |
 | Hyperparameter sweep | To do (waiting for the ClearML GPU queue) |
-| ResNet18 baseline | To do |
-| Deployment | Done: Render (permanent link) and a Colab notebook for demo day |
+| ResNet18 | Done: **99.13% test accuracy**, 100% top-5, macro F1 0.989; best model on field photos too (16.9% against 14.4% for the 99% CNN); now the final model (see [docs/results.md](docs/results.md)) |
+| Deployment | Done: Render (permanent link) and a Colab notebook for demo day, both running ResNet18 |
 | Report, demo video, AI use statement | To do (deadline 3 Dec 2026, 4pm) |
 
-Weakest classes: Corn Cercospora leaf spot (F1 0.89) and Tomato Early blight (F1 0.93).
+Weakest classes of the 99% CNN: Corn Cercospora leaf spot (F1 0.89) and Tomato Early blight (F1 0.93).
 Known limitation: photos of plants outside the 39 classes still get a confident answer
 (a maple leaf came out as "Background without leaves" at 97%). Full details, run IDs and
 per-epoch numbers are in [docs/results.md](docs/results.md).
